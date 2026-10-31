@@ -81,7 +81,7 @@ One design, three plans, built in this order:
 
 ## Decisions
 
-**Yours:** people ask questions in the skill's calm style; graphics come from the assistant and a design tool, not Hoardwise; the person finds the style that suits them, saves it by name, and can make one the default; styles live in Hoardwise; styles are managed only by asking the assistant; OAuth is part of this work; the assistant may log spends and incomes and save styles, nothing else; it works on both AWS and self-hosted; the worst failures are a data leak or taking an instance down.
+**Yours:** people ask questions in the skill's calm style; graphics come from the assistant and a design tool, not Hoardwise; the person finds the style that suits them, saves it by name, and can make one the default; styles live in Hoardwise; styles are managed only by asking the assistant; OAuth is part of this work; the assistant may log spends and incomes and save styles, nothing else; it works on both AWS and self-hosted; the worst failures are a data leak or taking an instance down; the official MCP SDK is used for `/mcp` and the resource-server side of OAuth, and we write the token-issuing endpoints ourselves.
 
 **Mine, for you to check:**
 - View-only is the default on the consent screen, and consent is the single place scope is chosen. **Yours:** view-only connections may manage graphic styles.
@@ -102,10 +102,24 @@ These are my calls, so please check them.
 - **Personal tokens on `/mcp`.** `/mcp` is a deliberate exception to "read tokens may only GET/HEAD", because MCP sends everything as POST. The rule moves into each tool: `hwr_` tokens (and OAuth "view only") can call the read tools and the style tools, and `hww_` tokens (and OAuth "view and change") can call the spend and income tools too. This makes style tools the one place a read token may write, which is deliberate and limited to the person's own style records. `tokenRouter.ts`, `NON_TOKEN_PATHS` and the SECURITY.md rows are updated to say so, with a test that a read token cannot reach the spend or income tools or any other budget write.
 - **One person or many.** Design for many. An instance can hold several people (Auth0 always does; the local login can too), so every stored record (OAuth codes, clients, styles) is keyed by user.
 
+## The official MCP SDK (decided after plan 1 was first built)
+
+**Yours:** use the official SDK for `/mcp` and for the resource-server side of OAuth, and write the token-issuing endpoints ourselves. The reason you gave is safety: protocol and token-verification code that many clients already use is less likely to hide a mistake than code we write once.
+
+What this means, from checking the SDK's current state (the v2 line, `@modelcontextprotocol/server` 2.4.0, stable, for the 2026-07-28 spec, with `zod` and a core package as its only dependencies):
+- `/mcp` is served by `createMcpHandler(factory, options).fetch(request, { authInfo })`, which takes a Web-standard `Request` and returns a `Response`. Our code converts the API Gateway event (or the container's request) to a `Request` and back. Use `responseMode: 'json'` so every call gets one complete JSON reply, `legacy: 'stateless'` (the default) so 2025-era clients are served per request, and `maxRequestBodySize` set to the 64 KiB cap. In that mode `GET` and `DELETE` get 405 from the SDK.
+- A fresh `McpServer` is built for every request, so which tools are registered can depend on the token's scope (a tool the connection may not use is simply not registered).
+- Token verification stays ours (the SDK passes `authInfo` through and never reads headers itself); the SDK's `requireBearerAuth`, `scopeChallenge` and the protected-resource metadata helpers are used where they fit.
+- The SDK does not issue tokens ("it verifies access tokens that an authorization server issued, and it never issues them"). The old helper for that (`mcpAuthRouter`, in `@modelcontextprotocol/server-legacy`) is Express-based and described as frozen, so plan 2 writes the authorize, token, register and revoke endpoints itself, reusing Hoardwise's hashed and revocable tokens and its login, with well-tested libraries (for example `jose`) for the token and key work.
+- The dependency is pinned to an exact version, its licence (MIT) and dependency tree are checked, and the Lambda bundle size and the container image are compared before and after.
+- Open risks the builder must settle first: the Lambda and container builds compile with `tsc --module commonjs` (no bundler), and the SDK is an ES-module package with an `exports` map, so type resolution and the CommonJS build may need a change; the SDK's JSON response mode must be confirmed to work behind API Gateway's HTTP API.
+
+The hand-written protocol layer in plan 1 (`src/mcp/protocol.ts` and the parsing in `src/mcp/handler.ts`) is replaced by this; the tools, review code, data loading and tests of their behaviour stay.
+
 ## Left to the builder
 
 - Exact tool names, inputs and outputs (about six to eight task-shaped tools, HOA-10), and what summary data the graphics guidance returns.
-- Which MCP protocol version and which part of the OAuth specs to target, and whether to use the official MCP SDK or a small hand-written handler (judge against the bundle size on Lambda and the stateless need).
+- Which part of the OAuth specs to target (the MCP SDK decision is settled; see "The official MCP SDK" below).
 - Where OAuth routes live and how they are routed on AWS; table and key design for codes, clients and styles in each Store implementation.
 - Token lifetime and refresh behaviour for OAuth-issued access, and how they appear in the existing tokens list.
 - The exact numbers: rate limits, size caps, style cap, registration cap.
