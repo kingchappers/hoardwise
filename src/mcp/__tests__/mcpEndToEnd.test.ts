@@ -18,7 +18,8 @@ function post(body: unknown): APIGatewayProxyEventV2 {
   requestCount += 1;
   return {
     rawPath: '/mcp',
-    headers: { authorization: `Bearer ${token}` },
+    // What a Streamable HTTP client sends with every POST.
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
     body: JSON.stringify(body),
     isBase64Encoded: false,
     requestContext: { routeKey: 'ANY /mcp', http: { method: 'POST', sourceIp: `198.51.100.${requestCount}` } },

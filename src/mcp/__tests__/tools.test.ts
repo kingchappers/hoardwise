@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { pk, txnSk, targetSk, catSk } from '../../api/db';
 import { setStore } from '../../store';
 import { MemoryStore } from '../../store/memory';
-import { handleMcpBody } from '../protocol';
+import { createMcpEndpoint } from '../sdkServer';
 import { MCP_TOOLS } from '../tools';
 import { loadBudget } from '../data';
 import type { McpContext, McpTool, ToolOutcome } from '../types';
@@ -80,12 +80,14 @@ describe('tool definitions', () => {
   });
 
   it('lists exactly the five tools for a read-scope token', async () => {
-    const response = await handleMcpBody(
-      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
-      context('user-a', 'read'),
-      MCP_TOOLS,
-    );
-    const names = JSON.parse(response.body ?? '').result.tools.map((t: { name: string }) => t.name);
+    const request = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    });
+    const authInfo = { token: '', clientId: 'token-id', scopes: ['read'], extra: { userId: 'user-a' } };
+    const response = await createMcpEndpoint(MCP_TOOLS)(request, { authInfo });
+    const names = ((await response.json()) as { result: { tools: { name: string }[] } }).result.tools.map((t) => t.name);
     expect(names).toEqual(['month_review', 'category_detail', 'pots_overview', 'chart_data', 'display_guidance']);
   });
 });

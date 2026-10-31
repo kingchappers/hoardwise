@@ -1,5 +1,8 @@
 import type { TokenScope } from '../auth/tokens';
 
+export const MCP_MAX_BODY_BYTES = 65_536;
+export const MCP_MAX_RESULT_CHARS = 200_000;
+
 export type ToolAccess = 'read' | 'styles' | 'budget';
 
 export interface McpContext {
@@ -15,6 +18,7 @@ export interface McpTool {
   title: string;
   description: string;
   access: ToolAccess;
+  // JSON Schema advertised in tools/list. The tool checks its own arguments in run, so its messages stay its own.
   inputSchema: Record<string, unknown>;
   annotations: {
     readOnlyHint: boolean;
