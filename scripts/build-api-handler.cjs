@@ -41,7 +41,7 @@ fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
 
 // Install dependencies in build/api
 console.log('Installing Lambda dependencies...');
-execSync('npm install --production', { cwd: apiBuildDir, stdio: 'inherit' });
+execSync('npm install --production --ignore-scripts', { cwd: apiBuildDir, stdio: 'inherit' });
 
 // Clean up package.json and package-lock.json (not needed in Lambda)
 fs.unlinkSync(packageJsonPath);
