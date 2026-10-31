@@ -156,6 +156,7 @@ describe('POST /mcp request rules', () => {
     const token = await tokenFor('user-a', 'read');
     const res = await invoke(makeEvent({ authorization: `Bearer ${token}`, body: 'x'.repeat(65_537) }));
     expect(res.statusCode).toBe(413);
+    expect(JSON.parse(res.body)).toEqual({ error: 'Request body is too large.' });
   });
 
   it('answers 429 with Retry-After on the 61st request in a minute, for that user only', async () => {
@@ -295,6 +296,35 @@ describe('POST /mcp through the SDK', () => {
     );
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).result._meta['io.modelcontextprotocol/serverInfo'].name).toBe('hoardwise');
+  });
+
+  it('refuses a 2026-07-28 subscriptions/listen promptly with one JSON reply instead of a stream', async () => {
+    const token = await tokenFor('user-a', 'read');
+    const version = '2026-07-28';
+    const meta = {
+      [PROTOCOL_VERSION_META_KEY]: version,
+      [CLIENT_INFO_META_KEY]: { name: 'test', version: '1' },
+      [CLIENT_CAPABILITIES_META_KEY]: {},
+    };
+    const reply = invoke(
+      makeEvent({
+        authorization: `Bearer ${token}`,
+        body: rpc('subscriptions/listen', { notifications: { toolsListChanged: true }, _meta: meta }),
+        extraHeaders: { 'mcp-protocol-version': version, 'mcp-method': 'subscriptions/listen' },
+      }),
+    );
+    const timedOut = new Promise<'timed out'>((resolve) => setTimeout(() => resolve('timed out'), 2000));
+    const res = await Promise.race([reply, timedOut]);
+    expect(res).not.toBe('timed out');
+    const response = res as ApiResponse;
+    expect(response.headers?.['Content-Type']).toMatch(/^application\/json/);
+    expect(JSON.parse(response.body)).toEqual({ jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'Method not found.' } });
+  });
+
+  it('refuses resources/subscribe before the SDK', async () => {
+    const token = await tokenFor('user-a', 'read');
+    const res = await invoke(makeEvent({ authorization: `Bearer ${token}`, body: rpc('resources/subscribe', { uri: 'x://y' }) }));
+    expect(JSON.parse(res.body)).toEqual({ jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'Method not found.' } });
   });
 
   it('returns month_review as text and structuredContent with the privacy note', async () => {

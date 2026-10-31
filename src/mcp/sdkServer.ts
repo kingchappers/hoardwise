@@ -34,6 +34,8 @@ const STATUS_MESSAGES: Record<number, string> = {
   415: 'Content-Type must be application/json.',
 };
 const UNSUPPORTED_VERSION = -32022;
+// Methods that open a long-lived stream. Every call here gets one JSON reply, so they are refused before the SDK.
+const STREAM_METHODS = new Set(['subscriptions/listen', 'resources/subscribe', 'resources/unsubscribe']);
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -47,8 +49,9 @@ function jsonReply(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-function rpcError(code: number, message: string): Response {
-  return jsonReply(200, { jsonrpc: '2.0', id: null, error: { code, message } });
+function rpcError(code: number, message: string, id: unknown = null): Response {
+  const safeId = typeof id === 'string' || typeof id === 'number' ? id : null;
+  return jsonReply(200, { jsonrpc: '2.0', id: safeId, error: { code, message } });
 }
 
 // Advertises the tool's JSON Schema as written and only checks that arguments are an object; each tool validates
@@ -129,7 +132,12 @@ function errorData(code: number, data: unknown): { data?: { supported: string[] 
 }
 
 // Keeps only the code of a JSON-RPC error, so no SDK wording, echoed input or `data` reaches the client.
-async function scrubbed(response: Response): Promise<Response> {
+export async function scrubbed(response: Response): Promise<Response> {
+  // A stream is never read: it may stay open for good, so it is cancelled and answered with a generic error.
+  if (response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
+    await response.body?.cancel().catch(() => undefined);
+    return rpcError(-32603, ERROR_MESSAGES[-32603]);
+  }
   const text = await response.text();
   if (text === '') return new Response(null, { status: response.status });
 
@@ -165,8 +173,12 @@ export function createMcpEndpoint(tools: McpTool[]): McpEndpoint {
   });
 
   return async (request, { authInfo }) => {
+    // The caller has already capped the body at MCP_MAX_BODY_BYTES, so reading it whole is bounded.
     const body = parseBody(await request.clone().text());
     if (Array.isArray(body?.parsed)) return rpcError(-32600, 'Batch requests are not supported.');
+    if (isPlainObject(body?.parsed) && typeof body.parsed.method === 'string' && STREAM_METHODS.has(body.parsed.method)) {
+      return rpcError(-32601, ERROR_MESSAGES[-32601], body.parsed.id);
+    }
 
     const parsedBody = body?.parsed;
     const legacy = await isLegacyRequest(request, parsedBody, { maxRequestBodySize: MCP_MAX_BODY_BYTES });

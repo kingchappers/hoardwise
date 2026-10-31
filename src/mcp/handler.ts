@@ -19,6 +19,9 @@ const HEADERS: Record<string, string> = { ...SECURITY_HEADERS, 'Content-Type': '
 // Only these request headers reach the SDK: never Authorization or Cookie.
 const FORWARDED_HEADERS = ['content-type', 'accept', 'mcp-protocol-version', 'mcp-method', 'mcp-name'];
 
+// Below the Lambda's 30 s timeout, so an SDK exchange never outlives the request.
+const SDK_TIMEOUT_MS = 25_000;
+
 // One endpoint per tool list, so the SDK handler is built once per module load, not per request.
 const endpoints = new WeakMap<McpTool[], McpEndpoint>();
 
@@ -48,7 +51,7 @@ function sdkRequest(event: APIGatewayProxyEventV2, body: string | undefined): Re
     const value = event.headers?.[name];
     if (value !== undefined) headers.set(name, value);
   }
-  return new Request('http://localhost/mcp', { method: 'POST', headers, body: body ?? '' });
+  return new Request('http://localhost/mcp', { method: 'POST', headers, body: body ?? '', signal: AbortSignal.timeout(SDK_TIMEOUT_MS) });
 }
 
 async function serveMcp(event: APIGatewayProxyEventV2, tools: McpTool[], authInfo: AuthInfo): Promise<ApiResponse> {

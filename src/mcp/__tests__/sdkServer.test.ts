@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createMcpEndpoint } from '../sdkServer';
+import { createMcpEndpoint, scrubbed } from '../sdkServer';
 import { READ_ONLY } from '../tools/shared';
 import type { McpContext, McpTool, ToolOutcome } from '../types';
 
@@ -55,5 +55,18 @@ describe('createMcpEndpoint', () => {
       vi.useRealTimers();
     }
     expect(seen).toEqual([{ userId: 'user-a', scope: 'write', now: new Date('2026-10-20T12:00:00.000Z') }]);
+  });
+});
+
+describe('scrubbed', () => {
+  it('cancels a streamed reply without reading it and answers one generic JSON error', async () => {
+    const cancel = vi.fn();
+    const neverEnds = new ReadableStream({ cancel });
+    const streamed = new Response(neverEnds, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+
+    const res = await scrubbed(streamed);
+    expect(cancel).toHaveBeenCalled();
+    expect(res.headers.get('content-type')).toMatch(/^application\/json/);
+    expect(await res.json()).toEqual({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Internal error.' } });
   });
 });
