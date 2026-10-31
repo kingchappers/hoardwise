@@ -1,7 +1,7 @@
 import type { AuthInfo } from '@modelcontextprotocol/server';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createToken } from '../../auth/tokens';
+import { createToken, listTokens } from '../../auth/tokens';
 import { createFailureLimiter } from '../../auth/failureLimiter';
 import { setStore } from '../../store';
 import { MemoryStore } from '../../store/memory';
@@ -54,6 +54,22 @@ beforeEach(() => {
 afterEach(() => {
   setStore(undefined);
   vi.restoreAllMocks();
+});
+
+describe('what reaches the SDK', () => {
+  it('passes neither the token nor the cookie nor the client address, only the stored token id', async () => {
+    const { token } = await send({ cookie: 'session=secret-cookie', 'x-forwarded-for': '198.51.100.7' });
+
+    expect(endpoint).toHaveBeenCalledTimes(1);
+    const [request, { authInfo }] = endpoint.mock.calls[0];
+    expect(request.headers.has('authorization')).toBe(false);
+    expect(request.headers.has('cookie')).toBe(false);
+    expect(request.headers.has('x-forwarded-for')).toBe(false);
+    expect(authInfo.token).toBe('');
+    expect(JSON.stringify(authInfo)).not.toContain(token);
+    const [stored] = await listTokens(store, 'user-a');
+    expect(authInfo.clientId).toBe(stored.tokenId);
+  });
 });
 
 describe('SDK replies that carry nothing for the client', () => {

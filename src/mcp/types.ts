@@ -29,7 +29,14 @@ export interface McpTool {
   run(args: Record<string, unknown>, context: McpContext): Promise<ToolOutcome>;
 }
 
+// Deny by default: only a listed scope and access pair is allowed, so an unknown value at runtime gets nothing.
+const ALLOWED: Record<TokenScope, readonly ToolAccess[]> = {
+  read: ['read', 'styles'],
+  write: ['read', 'styles', 'budget'],
+};
+
 export function toolAllowed(scope: TokenScope, access: ToolAccess): boolean {
-  if (scope === 'write') return true;
-  return access === 'read' || access === 'styles';
+  // Not Object.hasOwn: the Lambda build compiles to ES2020.
+  if (!Object.prototype.hasOwnProperty.call(ALLOWED, scope)) return false;
+  return ALLOWED[scope].includes(access);
 }

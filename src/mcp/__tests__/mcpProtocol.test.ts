@@ -338,6 +338,43 @@ describe('an exchange that never finishes', () => {
   });
 });
 
+describe('two users at once on the shared modern handler', () => {
+  it('gives each concurrent request only its own user\'s result', async () => {
+    const version = '2026-07-28';
+    const meta = { [PROTOCOL_VERSION_META_KEY]: version, [CLIENT_INFO_META_KEY]: { name: 'test', version: '1' }, [CLIENT_CAPABILITIES_META_KEY]: {} };
+    const balances: Record<string, number> = { 'user-a': 111, 'user-b': 222 };
+    // Each call waits until both have started, so the two exchanges are in flight together.
+    let arrived = 0;
+    let release!: () => void;
+    const bothStarted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tool = fakeTool('balance', {
+      run: async (_args, context): Promise<ToolOutcome> => {
+        arrived += 1;
+        if (arrived === 2) release();
+        await bothStarted;
+        return { ok: true, data: { userId: context.userId, balance: balances[context.userId] } };
+      },
+    });
+    const tools = [tool];
+    const call = async (userId: string): Promise<ApiResponse> => {
+      const { token } = await createToken(store, { userId, name: 'agent', scope: 'read', expiryDays: 90 }, Math.floor(Date.now() / 1000));
+      const event = makeEvent(rpc('tools/call', { name: 'balance', arguments: {}, _meta: meta }), token);
+      event.headers['mcp-protocol-version'] = version;
+      event.headers['mcp-method'] = 'tools/call';
+      event.headers['mcp-name'] = 'balance';
+      return handleMcpRequest(event, tools, { store, now: new Date(), tokenFailures: createFailureLimiter() });
+    };
+
+    const [a, b] = await Promise.all([call('user-a'), call('user-b')]);
+    expect([json(a).result.structuredContent, json(b).result.structuredContent]).toEqual([
+      { userId: 'user-a', balance: 111 },
+      { userId: 'user-b', balance: 222 },
+    ]);
+  });
+});
+
 describe('methods that open a stream', () => {
   // The 2026-07-28 shape is the one the SDK would serve as a never-ending event stream.
   it.each(['subscriptions/listen', 'resources/subscribe', 'resources/unsubscribe'])('refuses a modern %s promptly with JSON, not a stream', async (method) => {
