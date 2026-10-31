@@ -32,6 +32,8 @@ const packageJson = {
     'jwks-rsa': '^3.2.1',
     '@aws-sdk/client-dynamodb': '^3.0.0',
     '@aws-sdk/lib-dynamodb': '^3.0.0',
+    // Pinned in the root package.json; read from there so the two cannot drift.
+    '@modelcontextprotocol/server': require('../package.json').dependencies['@modelcontextprotocol/server'],
   }
 };
 fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));

@@ -12,8 +12,14 @@ execSync(
   'tsc container/bin.ts --outDir build/container --module commonjs --skipLibCheck --strict --target es2020 --resolveJsonModule --esModuleInterop',
   { cwd: root, stdio: 'inherit', env: { ...process.env, PATH: `${path.join(root, 'node_modules/.bin')}${path.delimiter}${process.env.PATH}` } },
 );
-// The repo root is "type": "module"; this marker lets the compiled CommonJS run.
-fs.writeFileSync(path.join(outDir, 'package.json'), JSON.stringify({ type: 'commonjs' }) + '\n');
+// The repo root is "type": "module"; this marker lets the compiled CommonJS run. Its dependencies are the only packages the
+// image needs at runtime (the rest load lazily and only in Lambda mode), installed here because the runtime stage ships no npm.
+const sdk = '@modelcontextprotocol/server';
+const manifest = { type: 'commonjs', dependencies: { [sdk]: require('../package.json').dependencies[sdk] } };
+fs.writeFileSync(path.join(outDir, 'package.json'), JSON.stringify(manifest, null, 2) + '\n');
+console.log('Installing container runtime dependencies...');
+execSync('npm install --omit=dev --ignore-scripts --no-audit --no-fund', { cwd: outDir, stdio: 'inherit' });
+fs.rmSync(path.join(outDir, 'package-lock.json'), { force: true });
 
 const entry = path.join(outDir, 'container', 'bin.js');
 if (!fs.existsSync(entry)) throw new Error(`Expected ${entry} after compiling`);
