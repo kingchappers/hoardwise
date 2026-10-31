@@ -55,13 +55,14 @@ function rpcError(code: number, message: string, id: unknown = null): Response {
 }
 
 // Advertises the tool's JSON Schema as written and only checks that arguments are an object; each tool validates
-// its own fields, so its messages are unchanged and the SDK never words a refusal from the input.
+// its own fields, so its messages are unchanged and the SDK never words a refusal from the input. The type requires an
+// output schema; validation only promises an object, so that is all it says.
 function argumentsSchema(schema: Record<string, unknown>): StandardSchemaWithJSON<Record<string, unknown>> {
   return {
     '~standard': {
       version: 1,
       vendor: 'hoardwise',
-      jsonSchema: { input: () => schema, output: () => schema },
+      jsonSchema: { input: () => schema, output: () => ({ type: 'object' }) },
       validate: (value) => (isPlainObject(value) ? { value } : { issues: [{ message: 'Arguments must be an object.' }] }),
     },
   };
