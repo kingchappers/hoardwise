@@ -19,8 +19,10 @@ const HEADERS: Record<string, string> = { ...SECURITY_HEADERS, 'Content-Type': '
 // Only these request headers reach the SDK: never Authorization or Cookie.
 const FORWARDED_HEADERS = ['content-type', 'accept', 'mcp-protocol-version', 'mcp-method', 'mcp-name'];
 
-// Below the Lambda's 30 s timeout, so an SDK exchange never outlives the request.
+// Below the Lambda's 30 s timeout. The SDK's legacy transport never reads the request's abort signal, so the reply is
+// raced against this timer; the abort only lets the modern path drop its exchange once the timer has won.
 const SDK_TIMEOUT_MS = 25_000;
+const INTERNAL_ERROR = JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Internal error.' } });
 
 // One endpoint per tool list, so the SDK handler is built once per module load, not per request.
 const endpoints = new WeakMap<McpTool[], McpEndpoint>();
@@ -45,13 +47,17 @@ function endpointFor(tools: McpTool[]): McpEndpoint {
   return endpoint;
 }
 
-function sdkRequest(event: APIGatewayProxyEventV2, body: string | undefined): Request {
+function internalError(): ApiResponse {
+  return { statusCode: 200, headers: HEADERS, body: INTERNAL_ERROR };
+}
+
+function sdkRequest(event: APIGatewayProxyEventV2, body: string | undefined, signal: AbortSignal): Request {
   const headers = new Headers();
   for (const name of FORWARDED_HEADERS) {
     const value = event.headers?.[name];
     if (value !== undefined) headers.set(name, value);
   }
-  return new Request('http://localhost/mcp', { method: 'POST', headers, body: body ?? '', signal: AbortSignal.timeout(SDK_TIMEOUT_MS) });
+  return new Request('http://localhost/mcp', { method: 'POST', headers, body: body ?? '', signal });
 }
 
 async function serveMcp(event: APIGatewayProxyEventV2, tools: McpTool[], authInfo: AuthInfo): Promise<ApiResponse> {
@@ -59,14 +65,37 @@ async function serveMcp(event: APIGatewayProxyEventV2, tools: McpTool[], authInf
   if (body !== undefined && Buffer.byteLength(body, 'utf8') > MCP_MAX_BODY_BYTES) {
     return { statusCode: 413, headers: HEADERS, body: JSON.stringify({ error: 'Request body is too large.' }) };
   }
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(undefined);
+    }, SDK_TIMEOUT_MS);
+  });
   try {
-    const response = await endpointFor(tools)(sdkRequest(event, body), { authInfo });
-    return { statusCode: response.status, headers: HEADERS, body: await response.text() };
+    const exchange = endpointFor(tools)(sdkRequest(event, body, controller.signal), { authInfo }).then(toApiResponse);
+    const reply = await Promise.race([exchange, timedOut]);
+    if (reply !== undefined) return reply;
+    console.error('mcp request timed out');
+    return internalError();
   } catch (error) {
     // Name only, and no detail in the reply: SDK errors can quote the request.
     console.error('mcp request failed', { error: error instanceof Error ? error.name : 'unknown' });
-    return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Internal error.' } }) };
+    return internalError();
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+// A dropped exchange (499), a server error or an empty error reply tells the client nothing, so each gets the fixed error.
+async function toApiResponse(response: Response): Promise<ApiResponse> {
+  const body = await response.text();
+  if (response.status === 499 || response.status >= 500 || (body === '' && response.status >= 400)) {
+    console.error('mcp request failed', { status: response.status });
+    return internalError();
+  }
+  return { statusCode: response.status, headers: HEADERS, body };
 }
 
 function requestBody(event: APIGatewayProxyEventV2): string | undefined {

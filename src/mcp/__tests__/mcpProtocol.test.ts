@@ -284,6 +284,60 @@ describe('malformed JSON-RPC', () => {
   });
 });
 
+describe('an exchange that never finishes', () => {
+  const INTERNAL_ERROR = { jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Internal error.' } };
+  const MODERN = '2026-07-28';
+
+  function modernCall(token: string): APIGatewayProxyEventV2 {
+    const meta = { [PROTOCOL_VERSION_META_KEY]: MODERN, [CLIENT_INFO_META_KEY]: { name: 'test', version: '1' }, [CLIENT_CAPABILITIES_META_KEY]: {} };
+    const event = makeEvent(rpc('tools/call', { name: 'echo', arguments: { q: 'private-arg' }, _meta: meta }), token);
+    event.headers['mcp-protocol-version'] = MODERN;
+    event.headers['mcp-method'] = 'tools/call';
+    event.headers['mcp-name'] = 'echo';
+    return event;
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each([
+    ['a 2025-06-18 (legacy) tools/call', (token: string) => makeEvent(callTool('echo', { q: 'private-arg' }), token)],
+    ['a 2026-07-28 (modern) tools/call', modernCall],
+  ])('answers %s whose tool hangs with a JSON -32603 after 25 s and leaves no timer behind', async (_label, eventFor) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const hangs = fakeTool('echo', {
+      run: () => {
+        started();
+        return new Promise<ToolOutcome>(() => {});
+      },
+    });
+    const { token } = await createToken(store, { userId: 'user-a', name: 'agent', scope: 'read', expiryDays: 90 }, Math.floor(Date.now() / 1000));
+
+    const reply = handleMcpRequest(eventFor(token), [hangs], { store, now: new Date(), tokenFailures: createFailureLimiter() });
+    await running;
+    await vi.advanceTimersByTimeAsync(25_000);
+    const res = await reply;
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers?.['Content-Type']).toMatch(/^application\/json/);
+    expect(json(res)).toEqual(INTERNAL_ERROR);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(everythingLogged()).not.toContain('private-arg');
+  });
+
+  it('answers a tool that finishes in time normally and leaves no timer behind', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const res = await send(callTool('echo', { a: 1 }));
+    expect(json(res).result.structuredContent).toEqual({ echoed: { a: 1 } });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 describe('methods that open a stream', () => {
   // The 2026-07-28 shape is the one the SDK would serve as a never-ending event stream.
   it.each(['subscriptions/listen', 'resources/subscribe', 'resources/unsubscribe'])('refuses a modern %s promptly with JSON, not a stream', async (method) => {
