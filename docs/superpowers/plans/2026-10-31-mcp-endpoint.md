@@ -1,5 +1,7 @@
 # MCP endpoint and read tools Implementation Plan (plan 1 of 3)
 
+> **Note, 2026-10-31:** the protocol layer written in Tasks 1 and 2 below (the hand-written JSON-RPC handler, `src/mcp/protocol.ts`) was replaced by the official MCP SDK; see `docs/superpowers/plans/2026-10-31-mcp-sdk-swap.md`. The tools, review code and safety rules in this plan still apply.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a stateless `POST /mcp` endpoint, on AWS and in the container, that a personal access token can call, with read tools that answer "how am I doing this month?" and supply chart-ready data.

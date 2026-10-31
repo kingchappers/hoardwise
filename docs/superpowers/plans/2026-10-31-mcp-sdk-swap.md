@@ -4,7 +4,7 @@
 
 **Goal:** Serve `/mcp` with `@modelcontextprotocol/server` (v2) instead of the hand-written JSON-RPC layer from plan 1, without changing what the tools return or who can call them.
 
-**Architecture:** `src/mcp/handler.ts` keeps every check that happens before the protocol (method, `Origin`, IP block, token auth, per-user limit, base64 decode) and then converts the event to a Web `Request` and calls `createMcpHandler(factory, { responseMode: 'json', legacy: 'stateless', maxRequestBodySize: 65_536 }).fetch(request, { authInfo })`. The factory builds a fresh `McpServer` per request and registers only the tools the token's scope allows. `src/mcp/protocol.ts` is deleted. The tools (`src/mcp/tools/*`), `review.ts`, `calc.ts`, `data.ts` and their tests stay.
+**Architecture:** `src/mcp/handler.ts` keeps every check that happens before the protocol (method, `Origin`, IP block, token auth, per-user limit, base64 decode) and then converts the event to a Web `Request` and serves it through the SDK in one of two ways, chosen with `isLegacyRequest(request)` (found in Task 1: `responseMode: 'json'` only covers 2026-07-28 traffic, and 2025-06-18 clients, which is what connectors send today, would get an event stream from `createMcpHandler`): modern requests go to a handler built once at module scope with `createMcpHandler(factory, { legacy: 'reject', responseMode: 'json', maxRequestBodySize: 65_536 }).fetch(request, { authInfo })` (these need `mcp-protocol-version` and `mcp-method` headers); legacy requests go to a per-request `WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })` connected to a fresh server. The factory builds a fresh `McpServer` per request and registers only the tools the token's scope allows. `src/mcp/protocol.ts` is deleted. The tools (`src/mcp/tools/*`), `review.ts`, `calc.ts`, `data.ts` and their tests stay.
 
 **Tech Stack:** `@modelcontextprotocol/server` pinned to an exact version (2.4.0 at time of writing), `zod` (a dependency of the SDK), TypeScript 5.9, Vitest.
 
@@ -14,7 +14,7 @@
 
 All of plan 1's Global Constraints still hold (token-only access, `Origin` 403, 64 KiB body cap with 413, 200,000-character result cap, 60 requests per minute per user, no logging of bodies, arguments or tokens, free text only in `text`/`name`/`label` fields with the privacy note, every result with money carries `unit: 'pence'`). Additionally:
 
-- The SDK dependency is pinned to an exact version (no `^`), is MIT-licensed, and its full dependency tree is listed in the PR description.
+- The SDK dependency is pinned to an exact version (no `^`), is Apache-2.0-licensed (compatible with AGPL-3.0-or-later; checked in Task 1), and its full dependency tree is listed in the PR description.
 - Supported client protocol versions are whatever the SDK supports. `2025-06-18` clients must keep working, through the SDK's stateless legacy path.
 - Every successful call gets one complete JSON reply (no streaming); `GET` and `DELETE` on `/mcp` answer 405.
 - The SDK never reads credentials: authentication stays in `api-handler.ts`/`src/mcp/handler.ts`, which pass `authInfo` in.
