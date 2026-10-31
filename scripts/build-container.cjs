@@ -14,10 +14,10 @@ execSync(
 );
 // The repo root is "type": "module"; this marker lets the compiled CommonJS run. Its dependencies are the only packages the
 // image needs at runtime (the rest load lazily and only in Lambda mode), installed here because the runtime stage ships no npm.
-const sdk = '@modelcontextprotocol/server';
-const manifest = { type: 'commonjs', dependencies: { [sdk]: require('../package.json').dependencies[sdk] } };
-fs.writeFileSync(path.join(outDir, 'package.json'), JSON.stringify(manifest, null, 2) + '\n');
+const { dependencies, overrides } = require('./sdk-runtime-deps.cjs');
+fs.writeFileSync(path.join(outDir, 'package.json'), JSON.stringify({ type: 'commonjs', dependencies, overrides }, null, 2) + '\n');
 console.log('Installing container runtime dependencies...');
+// Needs npm and network access at build time (the Dockerfile's build stage has both).
 execSync('npm install --omit=dev --ignore-scripts --no-audit --no-fund', { cwd: outDir, stdio: 'inherit' });
 fs.rmSync(path.join(outDir, 'package-lock.json'), { force: true });
 

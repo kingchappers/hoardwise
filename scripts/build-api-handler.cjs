@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const sdkRuntime = require('./sdk-runtime-deps.cjs');
 
 // Ensure build/api directory exists
 const apiBuildDir = path.join(__dirname, '../build/api');
@@ -32,9 +33,9 @@ const packageJson = {
     'jwks-rsa': '^3.2.1',
     '@aws-sdk/client-dynamodb': '^3.0.0',
     '@aws-sdk/lib-dynamodb': '^3.0.0',
-    // Pinned in the root package.json; read from there so the two cannot drift.
-    '@modelcontextprotocol/server': require('../package.json').dependencies['@modelcontextprotocol/server'],
-  }
+    ...sdkRuntime.dependencies,
+  },
+  overrides: sdkRuntime.overrides,
 };
 fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
 
