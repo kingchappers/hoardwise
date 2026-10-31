@@ -251,6 +251,7 @@ describe('malformed JSON-RPC', () => {
     ['a non-string method', '{"jsonrpc":"2.0","id":1,"method":5,"private":"private-text"}'],
     ['an object id', '{"jsonrpc":"2.0","id":{"private":"private-text"},"method":"ping"}'],
     ['an unknown method', '{"jsonrpc":"2.0","id":3,"method":"private-method"}'],
+    ['an empty body', ''],
   ];
 
   it.each(refused)('answers %s with a JSON-RPC error and echoes nothing', async (_label, body) => {
@@ -284,6 +285,23 @@ describe('malformed JSON-RPC', () => {
 });
 
 describe('methods that open a stream', () => {
+  // The 2026-07-28 shape is the one the SDK would serve as a never-ending event stream.
+  it.each(['subscriptions/listen', 'resources/subscribe', 'resources/unsubscribe'])('refuses a modern %s promptly with JSON, not a stream', async (method) => {
+    const version = '2026-07-28';
+    const meta = { [PROTOCOL_VERSION_META_KEY]: version, [CLIENT_INFO_META_KEY]: { name: 'test', version: '1' }, [CLIENT_CAPABILITIES_META_KEY]: {} };
+    const { token } = await createToken(store, { userId: 'user-a', name: 'agent', scope: 'read', expiryDays: 90 }, Math.floor(Date.now() / 1000));
+    const event = makeEvent(rpc(method, { uri: 'x://y', notifications: { toolsListChanged: true }, _meta: meta }), token);
+    event.headers['mcp-protocol-version'] = version;
+    event.headers['mcp-method'] = method;
+    const reply = handleMcpRequest(event, [fakeTool('echo')], { store, now: new Date(), tokenFailures: createFailureLimiter() });
+    const timedOut = new Promise<'timed out'>((resolve) => setTimeout(() => resolve('timed out'), 2000).unref());
+    const res = await Promise.race([reply, timedOut]);
+    expect(res).not.toBe('timed out');
+    const response = res as ApiResponse;
+    expect(response.headers?.['Content-Type']).toMatch(/^application\/json/);
+    expect(json(response)).toEqual({ jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'Method not found.' } });
+  });
+
   it.each(['subscriptions/listen', 'resources/subscribe'])('refuses %s promptly with JSON', async (method) => {
     const timedOut = new Promise<'timed out'>((resolve) => setTimeout(() => resolve('timed out'), 2000));
     const res = await Promise.race([send(rpc(method, { uri: 'x://y', notifications: { toolsListChanged: true } })), timedOut]);
