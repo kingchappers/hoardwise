@@ -1,10 +1,16 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { SECURITY_HEADERS } from '../api/constants';
 import { err } from '../api/http';
 import type { ApiResponse } from '../api/types';
 import type { FailureLimiter } from '../auth/failureLimiter';
+import { hashToken } from '../auth/localData';
+import { LOOKUP_PK, TOKEN_PATTERN, listingPk, revokeToken } from '../auth/tokens';
 import type { Store } from '../store';
-import { ClientLimitError, InvalidRedirectError, registerClient } from './clients';
+import { ClientLimitError, InvalidRedirectError, getClient, registerClient } from './clients';
+import { consumeCode } from './codes';
+import { createConnection, rotateConnection } from './connections';
+import { REFRESH_PK, REFRESH_USED_PK } from './types';
 import { authorizationServerMetadata, protectedResourceMetadata } from './metadata';
 
 export interface OauthPublicDeps {
@@ -14,11 +20,19 @@ export interface OauthPublicDeps {
   limiter: FailureLimiter;
   // Counts every discovery request per address (60 a minute in the handler), apart from the registration limiter.
   discoveryLimiter: FailureLimiter;
+  // Failed token requests per address (30 per 10 minutes in the handler), and every revoke request per address.
+  tokenLimiter: FailureLimiter;
+  revokeLimiter: FailureLimiter;
   nowSeconds: number;
 }
 
 const REGISTER_PATH = '/api/oauth/register';
+const TOKEN_PATH = '/api/oauth/token';
+const REVOKE_PATH = '/api/oauth/revoke';
 const MAX_REGISTER_BODY_BYTES = 8 * 1024;
+const MAX_FORM_BODY_BYTES = 8 * 1024;
+const VERIFIER_PATTERN = /^[A-Za-z0-9\-._~]{43,128}$/;
+const TOKEN_RETRY_AFTER_SECONDS = '600';
 const RETRY_AFTER_SECONDS = '3600';
 const GRANT_TYPES = ['authorization_code', 'refresh_token'];
 const RESPONSE_TYPES = ['code'];
@@ -110,15 +124,167 @@ async function register(event: APIGatewayProxyEventV2, deps: OauthPublicDeps): P
   }
 }
 
+function contentType(event: APIGatewayProxyEventV2): string {
+  const header = Object.entries(event.headers ?? {}).find(([name]) => name.toLowerCase() === 'content-type')?.[1] ?? '';
+  return header.split(';')[0].trim().toLowerCase();
+}
+
+type FormResult = { fields: Map<string, string> } | { failure: ApiResponse };
+
+// The body is checked for size before it is parsed. A repeated parameter is refused rather than resolved either way.
+function parseForm(event: APIGatewayProxyEventV2): FormResult {
+  if (contentType(event) !== 'application/x-www-form-urlencoded') {
+    return { failure: oauthError(415, 'invalid_request', 'The body must be application/x-www-form-urlencoded.') };
+  }
+  const body = requestBody(event);
+  if (Buffer.byteLength(body, 'utf8') > MAX_FORM_BODY_BYTES) {
+    return { failure: oauthError(413, 'invalid_request', 'Request body is too large.') };
+  }
+  const fields = new Map<string, string>();
+  for (const [name, value] of new URLSearchParams(body)) {
+    if (fields.has(name)) return { failure: oauthError(400, 'invalid_request', 'A parameter was repeated.') };
+    fields.set(name, value);
+  }
+  return { fields };
+}
+
+const TOKEN_NO_STORE = { ...NO_STORE, Pragma: 'no-cache' };
+
+const INVALID_GRANT = (): ApiResponse => oauthError(400, 'invalid_grant', 'The grant is invalid, expired or already used.');
+const INVALID_CLIENT = (): ApiResponse => oauthError(401, 'invalid_client', 'Unknown client. Register again.');
+
+function tokenResponse(tokens: { accessToken: string; refreshToken: string; expiresIn: number }, scope: string): ApiResponse {
+  return {
+    statusCode: 200,
+    headers: TOKEN_NO_STORE,
+    body: JSON.stringify({
+      access_token: tokens.accessToken,
+      token_type: 'Bearer',
+      expires_in: tokens.expiresIn,
+      refresh_token: tokens.refreshToken,
+      scope,
+    }),
+  };
+}
+
+function verifierMatches(verifier: string, challenge: string): boolean {
+  if (!VERIFIER_PATTERN.test(verifier)) return false;
+  const expected = Buffer.from(challenge, 'utf8');
+  const actual = Buffer.from(createHash('sha256').update(verifier).digest('base64url'), 'utf8');
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
+async function exchangeCode(store: Store, fields: Map<string, string>, nowSeconds: number): Promise<ApiResponse> {
+  const code = fields.get('code');
+  const redirectUri = fields.get('redirect_uri');
+  const clientId = fields.get('client_id');
+  const verifier = fields.get('code_verifier');
+  if (!code || !redirectUri || !clientId || !verifier) {
+    return oauthError(400, 'invalid_request', 'code, redirect_uri, client_id and code_verifier are required.');
+  }
+  const client = await getClient(store, clientId, nowSeconds);
+  if (!client) return INVALID_CLIENT();
+
+  // The code is spent before anything else is checked, so a wrong guess burns it.
+  const stored = await consumeCode(store, code, nowSeconds);
+  if (!stored || stored.clientId !== clientId || stored.redirectUri !== redirectUri || !verifierMatches(verifier, stored.codeChallenge)) {
+    return INVALID_GRANT();
+  }
+  const connection = await createConnection(
+    store, { userId: stored.userId, clientId, clientName: client.name, scope: stored.scope }, nowSeconds,
+  );
+  return tokenResponse(connection, stored.scope);
+}
+
+async function refreshTokens(store: Store, fields: Map<string, string>, nowSeconds: number): Promise<ApiResponse> {
+  const refreshToken = fields.get('refresh_token');
+  const clientId = fields.get('client_id');
+  if (!refreshToken || !clientId) return oauthError(400, 'invalid_request', 'refresh_token and client_id are required.');
+  if (!(await getClient(store, clientId, nowSeconds))) return INVALID_CLIENT();
+
+  const rotated = await rotateConnection(store, refreshToken, clientId, nowSeconds);
+  if (rotated === 'invalid' || rotated === 'reused') return INVALID_GRANT();
+  return tokenResponse(rotated, rotated.scope);
+}
+
+async function token(event: APIGatewayProxyEventV2, deps: OauthPublicDeps): Promise<ApiResponse> {
+  const sourceIp = event.requestContext.http.sourceIp;
+  if (deps.tokenLimiter.isBlocked(sourceIp)) return tooManyTokenRequests();
+
+  const response = await tokenOutcome(event, deps);
+  // Caller errors that reach nothing (wrong content type, oversize) are not guesses and are not counted.
+  if (response.statusCode >= 400 && response.statusCode !== 413 && response.statusCode !== 415) {
+    deps.tokenLimiter.recordFailure(sourceIp);
+    if (deps.tokenLimiter.isBlocked(sourceIp)) return tooManyTokenRequests();
+  }
+  return response;
+}
+
+function tooManyTokenRequests(): ApiResponse {
+  return oauthError(429, 'too_many_requests', 'Too many failed requests. Try again later.', { 'Retry-After': TOKEN_RETRY_AFTER_SECONDS });
+}
+
+async function tokenOutcome(event: APIGatewayProxyEventV2, deps: OauthPublicDeps): Promise<ApiResponse> {
+  const parsed = parseForm(event);
+  if ('failure' in parsed) return parsed.failure;
+  const grantType = parsed.fields.get('grant_type');
+  if (!grantType) return oauthError(400, 'invalid_request', 'grant_type is required.');
+  if (grantType !== 'authorization_code' && grantType !== 'refresh_token') {
+    return oauthError(400, 'unsupported_grant_type', 'Only authorization_code and refresh_token are supported.');
+  }
+  const store = await deps.getStore();
+  return grantType === 'authorization_code'
+    ? exchangeCode(store, parsed.fields, deps.nowSeconds)
+    : refreshTokens(store, parsed.fields, deps.nowSeconds);
+}
+
+interface ConnectionRef {
+  userId: string;
+  tokenId: string;
+}
+
+// Only a connection made through sign-in can be found here: a personal token has no kind, so this public route cannot revoke it.
+async function findConnection(store: Store, value: string): Promise<ConnectionRef | undefined> {
+  const hash = hashToken(value);
+  if (TOKEN_PATTERN.test(value)) {
+    const row = await store.get({ PK: LOOKUP_PK, SK: hash });
+    if (row?.kind === 'oauth') return { userId: String(row.userId), tokenId: String(row.tokenId) };
+  }
+  const refresh = (await store.get({ PK: REFRESH_PK, SK: hash })) ?? (await store.get({ PK: REFRESH_USED_PK, SK: hash }));
+  if (refresh) return { userId: String(refresh.userId), tokenId: String(refresh.tokenId) };
+  return undefined;
+}
+
+async function revoke(event: APIGatewayProxyEventV2, deps: OauthPublicDeps): Promise<ApiResponse> {
+  const sourceIp = event.requestContext.http.sourceIp;
+  deps.revokeLimiter.recordFailure(sourceIp);
+  if (deps.revokeLimiter.isBlocked(sourceIp)) return tooManyTokenRequests();
+
+  const parsed = parseForm(event);
+  if ('failure' in parsed) return parsed.failure;
+  const value = parsed.fields.get('token');
+  if (!value) return oauthError(400, 'invalid_request', 'token is required.');
+
+  const store = await deps.getStore();
+  const connection = await findConnection(store, value);
+  if (connection) {
+    const clientId = parsed.fields.get('client_id');
+    const listing = await store.get({ PK: listingPk(connection.userId), SK: connection.tokenId });
+    // A caller naming a client may only revoke that client's connection.
+    if (!clientId || listing?.clientId === clientId) await revokeToken(store, connection.userId, connection.tokenId);
+  }
+  return { statusCode: 200, headers: NO_STORE, body: '{}' };
+}
+
 export function isOauthPublicPath(path: string): boolean {
-  return path === REGISTER_PATH || path in DISCOVERY;
+  return path === REGISTER_PATH || path === TOKEN_PATH || path === REVOKE_PATH || path in DISCOVERY;
 }
 
 // Public OAuth routes, served ahead of any authentication. Returns undefined for any other path.
 export async function handleOauthPublic(event: APIGatewayProxyEventV2, deps: OauthPublicDeps): Promise<ApiResponse | undefined> {
   const path = event.rawPath;
   const document = DISCOVERY[path];
-  if (!document && path !== REGISTER_PATH) return undefined;
+  if (!document && path !== REGISTER_PATH && path !== TOKEN_PATH && path !== REVOKE_PATH) return undefined;
   if (!deps.origin) return err(404, 'Not found');
 
   const method = event.requestContext.http.method;
@@ -136,5 +302,7 @@ export async function handleOauthPublic(event: APIGatewayProxyEventV2, deps: Oau
     };
   }
   if (method !== 'POST') return methodNotAllowed('POST');
+  if (path === TOKEN_PATH) return token(event, deps);
+  if (path === REVOKE_PATH) return revoke(event, deps);
   return register(event, deps);
 }

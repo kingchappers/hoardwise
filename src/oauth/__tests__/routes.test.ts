@@ -31,7 +31,7 @@ const valid = {
 
 beforeEach(() => {
   store = new MemoryStore();
-  deps = { getStore: async () => store, discoveryLimiter: createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 }), origin: 'https://hoard.example', limiter: createFailureLimiter({ maxFailures: 10, windowSeconds: 3600, blockSeconds: 3600 }), nowSeconds: NOW };
+  deps = { getStore: async () => store, discoveryLimiter: createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 }), origin: 'https://hoard.example', limiter: createFailureLimiter({ maxFailures: 10, windowSeconds: 3600, blockSeconds: 3600 }), tokenLimiter: createFailureLimiter(), revokeLimiter: createFailureLimiter(), nowSeconds: NOW };
 });
 
 describe('POST /api/oauth/register', () => {

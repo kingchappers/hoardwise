@@ -309,6 +309,8 @@ describe('public OAuth routes (R2)', () => {
     ['GET', '/.well-known/oauth-protected-resource'],
     ['GET', '/.well-known/oauth-authorization-server'],
     ['POST', '/api/oauth/register'],
+    ['POST', '/api/oauth/token'],
+    ['POST', '/api/oauth/revoke'],
   ];
 
   afterEach(() => {

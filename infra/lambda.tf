@@ -123,6 +123,19 @@ resource "aws_apigatewayv2_stage" "default" {
     throttling_burst_limit = var.oauth_register_throttle_burst_limit
   }
 
+  # Public token exchange and revocation: tight shared throttles (INFRA-01, AUTH-19, AUTH-20).
+  route_settings {
+    route_key              = aws_apigatewayv2_route.oauth_token.route_key
+    throttling_rate_limit  = var.oauth_token_throttle_rate_limit
+    throttling_burst_limit = var.oauth_token_throttle_burst_limit
+  }
+
+  route_settings {
+    route_key              = aws_apigatewayv2_route.oauth_revoke.route_key
+    throttling_rate_limit  = var.oauth_revoke_throttle_rate_limit
+    throttling_burst_limit = var.oauth_revoke_throttle_burst_limit
+  }
+
   # Public discovery documents: a shared throttle each (INFRA-01, AUTH-19).
   route_settings {
     route_key              = aws_apigatewayv2_route.oauth_protected_resource.route_key

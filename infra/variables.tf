@@ -114,3 +114,29 @@ variable "oauth_discovery_throttle_burst_limit" {
   description = "Burst of requests allowed on each OAuth discovery document, across all callers."
   default     = 10
 }
+
+# The gateway throttle on POST /api/oauth/token, shared by everyone. The per-address limit is in the handler.
+variable "oauth_token_throttle_rate_limit" {
+  type        = number
+  description = "Steady requests per second allowed on the OAuth token endpoint, across all callers."
+  default     = 5
+}
+
+variable "oauth_token_throttle_burst_limit" {
+  type        = number
+  description = "Burst of requests allowed on the OAuth token endpoint, across all callers."
+  default     = 10
+}
+
+# The gateway throttle on POST /api/oauth/revoke, shared by everyone. The per-address limit is in the handler.
+variable "oauth_revoke_throttle_rate_limit" {
+  type        = number
+  description = "Steady requests per second allowed on the OAuth revoke endpoint, across all callers."
+  default     = 2
+}
+
+variable "oauth_revoke_throttle_burst_limit" {
+  type        = number
+  description = "Burst of requests allowed on the OAuth revoke endpoint, across all callers."
+  default     = 5
+}

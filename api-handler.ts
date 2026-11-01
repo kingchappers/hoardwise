@@ -28,6 +28,9 @@ const tokenFailures = createFailureLimiter();
 // Unset or invalid APP_ORIGIN disables OAuth. Registrations: 10 per address per hour, exact in the container and per
 // instance on AWS, where the route's own throttle backs it.
 const discoveryLimiter = createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 });
+// Token requests: 30 failures per address per 10 minutes. Revoke counts every request at the same rate.
+const tokenLimiter = createFailureLimiter({ maxFailures: 30, windowSeconds: 600, blockSeconds: 600 });
+const revokeLimiter = createFailureLimiter({ maxFailures: 30, windowSeconds: 600, blockSeconds: 600 });
 const registrationLimiter = createFailureLimiter({ maxFailures: 10, windowSeconds: 3600, blockSeconds: 3600 });
 
 function tooManyRequests(): ApiResponse {
@@ -86,6 +89,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         origin: resolvePublicOrigin(),
         limiter: registrationLimiter,
         discoveryLimiter,
+        tokenLimiter,
+        revokeLimiter,
         nowSeconds: Math.floor(Date.now() / 1000),
       });
       if (oauthResponse) return oauthResponse;

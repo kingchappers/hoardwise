@@ -18,7 +18,7 @@ function event(method: string, rawPath: string, headers: Record<string, string> 
 }
 
 function deps(origin: string | undefined) {
-  return { getStore: async () => new MemoryStore(), discoveryLimiter: createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 }), origin, limiter: createFailureLimiter(), nowSeconds: 1_800_000_000 };
+  return { getStore: async () => new MemoryStore(), discoveryLimiter: createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 }), origin, limiter: createFailureLimiter(), tokenLimiter: createFailureLimiter(), revokeLimiter: createFailureLimiter(), nowSeconds: 1_800_000_000 };
 }
 
 afterEach(() => vi.restoreAllMocks());
