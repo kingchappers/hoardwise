@@ -117,7 +117,7 @@ export function AiAssistants(): React.JSX.Element {
             <li>Choose Connect and sign in to Hoardwise.</li>
           </ol>
           <Text size="sm">The Claude phone app shows connectors you add on the web or desktop. A phone cannot add a new one.</Text>
-          <Text size="sm">Needs sign-in connections to be turned on for this Hoardwise (self-hosters: set APP_ORIGIN).</Text>
+          <Text size="sm">If Connect does not work, ask whoever runs this Hoardwise to turn on sign-in connections (self-hosters: set APP_ORIGIN).</Text>
         </Client>
 
         <Client title="Claude Code">

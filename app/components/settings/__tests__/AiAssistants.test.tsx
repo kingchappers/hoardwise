@@ -48,7 +48,7 @@ describe('AiAssistants', () => {
 
   it('says what the sign-in needs on the instance', () => {
     renderSection();
-    expect(screen.getByText(/self-hosters: set APP_ORIGIN/)).toBeInTheDocument();
+    expect(screen.getByText(/If Connect does not work, ask whoever runs this Hoardwise to turn on sign-in connections \(self-hosters: set APP_ORIGIN\)/)).toBeInTheDocument();
   });
 
   it('gives the Claude Code command with the real address and a placeholder token', () => {

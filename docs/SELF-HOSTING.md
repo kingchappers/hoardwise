@@ -70,7 +70,7 @@ Run the plain-HTTP variant and let your proxy terminate HTTPS:
 
 The app serves an MCP endpoint at `/mcp` (for example `https://hoardwise.example.com/mcp`) that AI assistants such as Claude can use. Settings shows the address with steps for each app.
 
-- **Sign-in connections** (paste the address into Claude's Add custom connector) need `APP_ORIGIN` set to the public URL, or `TLS_DOMAIN`. Without either, the sign-in cannot work.
+- **Sign-in connections** (paste the address into Claude's Add custom connector) need `APP_ORIGIN` set to the public URL, or `TLS_DOMAIN`. Without either, the sign-in cannot work. The origin must be https (http is accepted only for `localhost` or another loopback address); with any other plain-HTTP origin, sign-in connections stay off and personal tokens still work.
 - **Personal access tokens** work without it. Make one in Settings and send it as `Authorization: Bearer <token>`.
 - The token endpoint blocks an address for 10 minutes after 30 failed requests. Claude's requests may share an address with other Claude users, so repeated failures can temporarily block valid refreshes from that address.
 
