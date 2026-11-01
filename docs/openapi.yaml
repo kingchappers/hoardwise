@@ -3055,6 +3055,10 @@ components:
           minLength: 8
           maxLength: 8
           description: The first 8 characters of the secret, to recognise it by.
+        kind:
+          type: string
+          enum: [oauth]
+          description: Present and `oauth` for a connection made through sign-in (for example an AI assistant); absent for a personal token.
     NewAccessToken:
       type: object
       additionalProperties: false

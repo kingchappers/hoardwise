@@ -13,7 +13,8 @@ export const LAST_USED_INTERVAL_SECONDS = 3600;
 const SECONDS_PER_DAY = 24 * 60 * 60;
 const PREFIX_LENGTH = 8;
 // One shared partition, because Store.query lists a single partition and a lookup must find a token by hash alone.
-const LOOKUP_PK = 'AUTH#TOKENS';
+const REFRESH_PK = 'OAUTH#REFRESH';
+export const LOOKUP_PK = 'AUTH#TOKENS';
 
 export interface TokenRecord {
   tokenId: string;
@@ -23,6 +24,7 @@ export interface TokenRecord {
   expiresAt: number | null;
   lastUsedAt: number | null;
   prefix: string;
+  kind?: 'oauth';
 }
 
 export interface StoredToken extends TokenRecord {
@@ -37,12 +39,13 @@ export class TokenLimitError extends Error {
   }
 }
 
-function listingPk(userId: string): string {
+export function listingPk(userId: string): string {
   return `AUTH#TOKENLIST#${userId}`;
 }
 
 function toRecord(item: Item): TokenRecord {
   return {
+    ...(item.kind === 'oauth' ? { kind: 'oauth' as const } : {}),
     tokenId: String(item.tokenId),
     name: String(item.name),
     scope: item.scope === 'write' ? 'write' : 'read',
@@ -113,6 +116,8 @@ export async function revokeToken(store: Store, userId: string, tokenId: string)
     { delete: { PK: LOOKUP_PK, SK: String(listing.hash) } },
     { delete: { PK: listingPk(userId), SK: tokenId } },
   ]);
+  // An OAuth connection also has a refresh row, which must go with it so the refresh token stops working.
+  if (typeof listing.refreshHash === 'string') await store.delete({ PK: REFRESH_PK, SK: listing.refreshHash });
   return true;
 }
 

@@ -149,3 +149,22 @@ describe('touchToken', () => {
     expect(await listTokens(store, 'u1')).toHaveLength(0);
   });
 });
+
+describe('oauth kind', () => {
+  it('leaves kind off a personal token and exposes it on an oauth listing row', async () => {
+    const { token } = await createToken(store, input(), NOW);
+    expect((await listTokens(store, 'u1'))[0].kind).toBeUndefined();
+    expect((await findToken(store, token, NOW))?.kind).toBeUndefined();
+
+    await store.put({ PK: 'AUTH#TOKENLIST#u1', SK: 'oauth-1', tokenId: 'oauth-1', name: 'Claude', scope: 'read', createdAt: NOW, expiresAt: NOW + 5, lastUsedAt: null, prefix: 'hwr_abcd', hash: 'h', kind: 'oauth' });
+    const listed = await listTokens(store, 'u1');
+    expect(listed.find((t) => t.tokenId === 'oauth-1')?.kind).toBe('oauth');
+  });
+
+  it('revokeToken also deletes the refresh row named by refreshHash', async () => {
+    await store.put({ PK: 'AUTH#TOKENLIST#u1', SK: 'oauth-1', tokenId: 'oauth-1', name: 'Claude', scope: 'read', createdAt: NOW, expiresAt: NOW + 5, lastUsedAt: null, prefix: 'hwr_abcd', hash: 'h', kind: 'oauth', refreshHash: 'rh' });
+    await store.put({ PK: 'OAUTH#REFRESH', SK: 'rh', userId: 'u1' });
+    await revokeToken(store, 'u1', 'oauth-1');
+    expect(await store.get({ PK: 'OAUTH#REFRESH', SK: 'rh' })).toBeUndefined();
+  });
+});
