@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { PENDING_ADD_KEY } from '~/lib/launchIntent';
 import { DEFAULT_PREFERENCES, writePreferences } from '~/lib/preferences';
 import { clearSessionEnded, markSessionEnded } from '~/lib/session';
 import { SESSION_LIFETIME_TEXT } from '~/lib/sessionLifetime';
+import { rememberConnectReturn, takeConnectReturn } from '~/lib/connectReturn';
 
 const auth = vi.hoisted(() => ({
   isAuthenticated: true,
@@ -402,5 +403,38 @@ describe('DefaultLayout sign-in panel links', () => {
     auth.error = authError('login_required');
     renderLayout(<p>private content</p>, '/');
     expect(screen.getByRole('link', { name: 'See what it looks like' })).toHaveAttribute('href', '/about');
+  });
+});
+
+describe('DefaultLayout connection request across sign-in', () => {
+  const CONNECT = '/connect?response_type=code&client_id=c&state=s';
+
+  it('keeps the whole /connect request while signed out', () => {
+    auth.isAuthenticated = false;
+    renderLayout(<p>page</p>, CONNECT);
+    expect(takeConnectReturn()).toBe(CONNECT);
+  });
+
+  it('does not keep other pages', () => {
+    auth.isAuthenticated = false;
+    renderLayout(<p>page</p>, '/settings?x=1');
+    expect(takeConnectReturn()).toBeUndefined();
+  });
+
+  it('sends a visitor back to it when they arrive signed in on the home page', () => {
+    rememberConnectReturn(CONNECT);
+    function Where() {
+      const { pathname, search } = useLocation();
+      return <p data-testid="where">{pathname + search}</p>;
+    }
+    renderLayout(<Where />, '/');
+    expect(screen.getByTestId('where')).toHaveTextContent(CONNECT);
+    expect(takeConnectReturn()).toBeUndefined();
+  });
+
+  it('leaves it alone on other pages', () => {
+    rememberConnectReturn(CONNECT);
+    renderLayout(<p>page</p>, '/settings');
+    expect(takeConnectReturn()).toBe(CONNECT);
   });
 });
