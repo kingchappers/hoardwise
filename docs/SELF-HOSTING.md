@@ -66,6 +66,26 @@ Run the plain-HTTP variant and let your proxy terminate HTTPS:
 - Forward the original `Host` header.
 - The session cookie is named `__Host-hoardwise_session` and is `Secure` only when the effective origin is https. With plain HTTP and no `APP_ORIGIN`, it is named `hoardwise_session`, is not `Secure`, and the container logs a warning at start. If you are behind HTTPS but cannot set `APP_ORIGIN`, set `COOKIE_SECURE=true`.
 
+## Connecting AI assistants
+
+The app serves an MCP endpoint at `/mcp` (for example `https://hoardwise.example.com/mcp`) that AI assistants such as Claude can use. Settings shows the address with steps for each app.
+
+- **Sign-in connections** (paste the address into Claude's Add custom connector) need `APP_ORIGIN` set to the public URL, or `TLS_DOMAIN`. Without either, the sign-in cannot work. The origin must be https (http is accepted only for `localhost`, `127.0.0.1` or `[::1]`); with any other plain-HTTP origin, sign-in connections stay off and personal tokens still work.
+- **Personal access tokens** work without it. Make one in Settings and send it as `Authorization: Bearer <token>`.
+- The per-address limits can be triggered on purpose from an address that many people share, such as a hosted client's backend. Registration allows 60 attempts per address per hour, and the token endpoint blocks an address for 10 minutes after 30 failed code exchanges. What that blocks is new registrations and code exchanges from that address for a while. Refreshes are not counted or blocked, so connections already made keep working. The real bounds are the 500-client cap (the oldest unused client is evicted at the cap) and, on AWS only, the gateway throttles. In the container, refreshes are limited only by how cheap each request is (a bad one costs up to three indexed reads and one hash).
+
+To check the endpoint from a terminal, with `TOKEN` set to an access token:
+
+```bash
+curl -sS https://hoardwise.example.com/mcp \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+A request without the `Accept` or `Content-Type` header is refused.
+
 ## Running on a managed host
 
 Hosts such as PikaPods run the image for you and give you environment variables, a data folder and a log viewer, but no shell. Use plain HTTP (leave `TLS_DOMAIN` unset); the host's proxy terminates TLS.

@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { consumeCode, issueCode } from '../../oauth/codes';
 import { ConditionFailedError } from '../../store';
 import { MemoryStore } from '../../store/memory';
 import { hashToken } from '../localData';
@@ -15,6 +16,7 @@ function input(overrides: Partial<Parameters<typeof createToken>[1]> = {}): Para
 }
 
 beforeEach(() => { store = new MemoryStore(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('createToken', () => {
   it('makes a read token that starts hwr_ and is 47 characters', async () => {
@@ -119,6 +121,25 @@ describe('revoking', () => {
     expect(await listTokens(store, 'u1')).toHaveLength(0);
     expect(await listTokens(store, 'u2')).toHaveLength(0);
   });
+
+  it('revokeAllTokens rejects, without data in the message, when rows keep coming back', async () => {
+    await createToken(store, input(), NOW);
+    const realDelete = store.delete.bind(store);
+    let n = 0;
+    vi.spyOn(store, 'delete').mockImplementation(async (key, options) => {
+      await realDelete(key, options);
+      // A concurrent writer re-creates a row after every delete.
+      await store.put({ PK: 'AUTH#TOKENS', SK: `again-${n++}`, userId: 'u1', tokenId: `t${n}` });
+    });
+    await expect(revokeAllTokens(store)).rejects.toThrow('Could not revoke every access token');
+  });
+
+  it('revokeAllTokens also deletes outstanding authorization codes', async () => {
+    const code = await issueCode(store, { clientId: 'c1', userId: 'u1', scope: 'read', redirectUri: 'https://claude.ai/cb', codeChallenge: 'x' }, NOW);
+    await revokeAllTokens(store);
+    expect(await store.query('OAUTH#CODES')).toHaveLength(0);
+    expect(await consumeCode(store, code, NOW + 1)).toBeUndefined();
+  });
 });
 
 describe('touchToken', () => {
@@ -147,5 +168,24 @@ describe('touchToken', () => {
     }
     expect(await findToken(store, token, NOW + 10)).toBeUndefined();
     expect(await listTokens(store, 'u1')).toHaveLength(0);
+  });
+});
+
+describe('oauth kind', () => {
+  it('leaves kind off a personal token and exposes it on an oauth listing row', async () => {
+    const { token } = await createToken(store, input(), NOW);
+    expect((await listTokens(store, 'u1'))[0].kind).toBeUndefined();
+    expect((await findToken(store, token, NOW))?.kind).toBeUndefined();
+
+    await store.put({ PK: 'AUTH#TOKENLIST#u1', SK: 'oauth-1', tokenId: 'oauth-1', name: 'Claude', scope: 'read', createdAt: NOW, expiresAt: NOW + 5, lastUsedAt: null, prefix: 'hwr_abcd', hash: 'h', kind: 'oauth' });
+    const listed = await listTokens(store, 'u1');
+    expect(listed.find((t) => t.tokenId === 'oauth-1')?.kind).toBe('oauth');
+  });
+
+  it('revokeToken also deletes the refresh row named by refreshHash', async () => {
+    await store.put({ PK: 'AUTH#TOKENLIST#u1', SK: 'oauth-1', tokenId: 'oauth-1', name: 'Claude', scope: 'read', createdAt: NOW, expiresAt: NOW + 5, lastUsedAt: null, prefix: 'hwr_abcd', hash: 'h', kind: 'oauth', refreshHash: 'rh' });
+    await store.put({ PK: 'OAUTH#REFRESH', SK: 'rh', userId: 'u1' });
+    await revokeToken(store, 'u1', 'oauth-1');
+    expect(await store.get({ PK: 'OAUTH#REFRESH', SK: 'rh' })).toBeUndefined();
   });
 });

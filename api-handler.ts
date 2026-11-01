@@ -12,6 +12,8 @@ import { touchToken } from './src/auth/tokens';
 import { createFailureLimiter } from './src/auth/failureLimiter';
 import { handleMcpRequest } from './src/mcp/handler';
 import { MCP_TOOLS } from './src/mcp/tools';
+import { resolvePublicOrigin } from './src/oauth/config';
+import { handleOauthPublic, isOauthPublicPath } from './src/oauth/routes';
 
 const router = createRouter();
 registerApiRoutes(router);
@@ -22,6 +24,14 @@ const INTERNAL_ERROR = JSON.stringify({ error: 'Internal server error' });
 
 // Exact in the container (one process); per instance on AWS, where API Gateway's throttling is the main limit.
 const tokenFailures = createFailureLimiter();
+
+// Unset or invalid APP_ORIGIN disables OAuth. Registrations: 60 per address per hour, exact in the container and per
+// instance on AWS, where the route's own throttle backs it.
+const discoveryLimiter = createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 });
+// Token requests: 30 failures per address per 10 minutes (refresh grants are exempt). Revoke counts every request at the same rate.
+const tokenLimiter = createFailureLimiter({ maxFailures: 30, windowSeconds: 600, blockSeconds: 600 });
+const revokeLimiter = createFailureLimiter({ maxFailures: 30, windowSeconds: 600, blockSeconds: 600 });
+const registrationLimiter = createFailureLimiter({ maxFailures: 60, windowSeconds: 3600, blockSeconds: 3600 });
 
 function tooManyRequests(): ApiResponse {
   const response = err(429, 'Too many requests');
@@ -70,7 +80,20 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   // from the 401s below and answered with a generic body; the detail goes to the logs only.
   try {
     if (event.rawPath === '/mcp') {
-      return await handleMcpRequest(event, MCP_TOOLS, { store: await initStore(), now: new Date(), tokenFailures });
+      return await handleMcpRequest(event, MCP_TOOLS, { store: await initStore(), now: new Date(), tokenFailures, oauthOrigin: resolvePublicOrigin() });
+    }
+    // Public OAuth routes: never through the auth provider, a session or a JWT.
+    if (isOauthPublicPath(event.rawPath)) {
+      const oauthResponse = await handleOauthPublic(event, {
+        getStore: initStore,
+        origin: resolvePublicOrigin(),
+        limiter: registrationLimiter,
+        discoveryLimiter,
+        tokenLimiter,
+        revokeLimiter,
+        nowSeconds: Math.floor(Date.now() / 1000),
+      });
+      if (oauthResponse) return oauthResponse;
     }
     if (presentsAccessToken(event)) return await handleTokenRequest(event);
 

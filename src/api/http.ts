@@ -19,3 +19,7 @@ export function parseJsonObject(event: APIGatewayProxyEventV2): Record<string, u
     return null;
   }
 }
+
+export function noStore(response: ApiResponse): ApiResponse {
+  return { ...response, headers: { ...response.headers, 'Cache-Control': 'no-store' } };
+}

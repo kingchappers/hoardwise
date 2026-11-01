@@ -8,7 +8,7 @@ describe('registerApiRoutes', () => {
   const routes = router.routes();
 
   it('registers every API route', () => {
-    expect(routes).toHaveLength(36);
+    expect(routes).toHaveLength(38);
   });
 
   it('includes the docs routes', () => {

@@ -57,6 +57,14 @@ describe('Settings page', () => {
     expect(screen.queryByRole('link', { name: /^API docs/ })).not.toBeInTheDocument();
   });
 
+  it('shows the AI assistants section, and hides it in the demo', () => {
+    renderSettings();
+    expect(screen.getByRole('heading', { name: 'AI assistants' })).toBeInTheDocument();
+    demo.isDemo = true;
+    renderSettings();
+    expect(screen.getAllByRole('heading', { name: 'AI assistants' })).toHaveLength(1);
+  });
+
   it('has a Settings heading', () => {
     renderSettings();
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
@@ -164,10 +172,10 @@ describe('Settings page', () => {
   });
 
   describe('grouping', () => {
-    it('groups the controls under Signing in, Access tokens, Display, Messages, Money, Keyboard and launch, Reminders, Manage and Help, in that order', () => {
+    it('groups the controls under Signing in, AI assistants, Access tokens, Display, Messages, Money, Keyboard and launch, Reminders, Manage and Help, in that order', () => {
       renderSettings();
       const headings = screen.getAllByRole('heading', { level: 2 }).map(heading => heading.textContent);
-      expect(headings).toEqual(['Signing in', 'Access tokens', 'Display', 'Messages', 'Money', 'Keyboard and launch', 'Reminders', 'Manage', 'Help']);
+      expect(headings).toEqual(['Signing in', 'AI assistants', 'Access tokens', 'Display', 'Messages', 'Money', 'Keyboard and launch', 'Reminders', 'Manage', 'Help']);
     });
 
     it('keeps to a handful of controls, each with a line of plain help', () => {

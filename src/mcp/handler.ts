@@ -31,11 +31,19 @@ export interface McpDeps {
   store: Store;
   now: Date;
   tokenFailures: FailureLimiter;
+  // The configured public origin; when set, a 401 tells the client where the sign-in metadata is.
+  oauthOrigin?: string;
 }
 
 function tooManyRequests(): ApiResponse {
   const response = err(429, 'Too many requests');
   return { ...response, headers: { ...response.headers, 'Retry-After': '60' } };
+}
+
+function withDiscoveryHint(rejection: ApiResponse, origin: string | undefined): ApiResponse {
+  if (!origin || rejection.statusCode !== 401) return rejection;
+  const hint = `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`;
+  return { ...rejection, headers: { ...rejection.headers, 'WWW-Authenticate': hint } };
 }
 
 function endpointFor(tools: McpTool[]): McpEndpoint {
@@ -119,7 +127,7 @@ export async function handleMcpRequest(event: APIGatewayProxyEventV2, tools: Mcp
   if ('rejection' in result) {
     deps.tokenFailures.recordFailure(sourceIp);
     if (deps.tokenFailures.isBlocked(sourceIp)) return tooManyRequests();
-    return result.rejection;
+    return withDiscoveryHint(result.rejection, deps.oauthOrigin);
   }
 
   if (!requestLimiter.allow(result.userId, nowSeconds)) return tooManyRequests();

@@ -103,4 +103,5 @@ export interface AccessToken {
   expiresAt: number | null;
   lastUsedAt: number | null;
   prefix: string;
+  kind?: 'oauth';
 }

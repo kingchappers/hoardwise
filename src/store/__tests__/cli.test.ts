@@ -160,6 +160,54 @@ describe('runCli', () => {
       store.close();
     });
 
+    it('replaces the password before ending sessions, so no old-password session can outlive the reset', async () => {
+      await seedAccount();
+      const realDelete = SqliteStore.prototype.delete;
+      let oldPasswordStillWorkedAtSessionDelete: boolean | undefined;
+      vi.spyOn(SqliteStore.prototype, 'delete').mockImplementation(async function (this: SqliteStore, key, options) {
+        if (key.PK === 'AUTH#SESSIONS' && oldPasswordStillWorkedAtSessionDelete === undefined) {
+          oldPasswordStillWorkedAtSessionDelete = await verifyPassword('the old password 1', (await getAccount(this))!);
+        }
+        return realDelete.call(this, key, options);
+      });
+
+      await runCli(['reset-password'], env, { readPassword: async () => 'the new password 22' });
+      vi.restoreAllMocks();
+
+      expect(oldPasswordStillWorkedAtSessionDelete).toBe(false);
+      const store = new SqliteStore(env.SQLITE_PATH as string);
+      expect(await store.query('AUTH#SESSIONS')).toEqual([]);
+      expect(await verifyPassword('the new password 22', (await getAccount(store))!)).toBe(true);
+      store.close();
+    });
+
+    it('has already replaced the password, and says to run again, when the token sweep cannot finish', async () => {
+      await seedAccount();
+      const seed = new SqliteStore(env.SQLITE_PATH as string);
+      await createToken(seed, { userId: 'local|u1', name: 'r', scope: 'read', expiryDays: null }, Math.floor(Date.now() / 1000));
+      seed.close();
+
+      const realDelete = SqliteStore.prototype.delete;
+      let n = 0;
+      vi.spyOn(SqliteStore.prototype, 'delete').mockImplementation(async function (this: SqliteStore, key, options) {
+        await realDelete.call(this, key, options);
+        await this.put({ PK: 'AUTH#TOKENS', SK: `again-${n++}`, userId: 'local|u1', tokenId: `t${n}` });
+      });
+
+      const failure = await runCli(['reset-password'], env, { readPassword: async () => 'the new password 22' }).then(
+        () => undefined,
+        (error: Error) => error,
+      );
+      vi.restoreAllMocks();
+
+      expect(failure?.message).toBe('The password was changed, but not every access token could be revoked. Run this command again to finish.');
+      expect(failure?.message).not.toContain('the new password 22');
+      const store = new SqliteStore(env.SQLITE_PATH as string);
+      expect(await verifyPassword('the new password 22', (await getAccount(store))!)).toBe(true);
+      expect(await verifyPassword('the old password 1', (await getAccount(store))!)).toBe(false);
+      store.close();
+    });
+
     it('refuses a password that fails the policy, changing nothing', async () => {
       await seedAccount();
       await expect(runCli(['reset-password'], env, { readPassword: async () => 'short' })).rejects.toThrow(/at least 12/);

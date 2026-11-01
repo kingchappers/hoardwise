@@ -296,6 +296,21 @@ describe('the /mcp route', () => {
   });
 });
 
+describe('the OAuth discovery routes', () => {
+  it.each(['/.well-known/oauth-protected-resource', '/.well-known/oauth-authorization-server'])('sends %s to the API handler', async (path) => {
+    await start();
+    const response = await fetch(`${base}${path}`);
+    expect(response.status).toBe(200);
+    expect(seen[0].rawPath).toBe(path);
+  });
+
+  it('keeps other /.well-known/ paths with the static handler', async () => {
+    await start();
+    await fetch(`${base}/.well-known/security.txt`);
+    expect(seen).toHaveLength(0);
+  });
+});
+
 describe('client aborts and logging', () => {
   it('stays quiet when a client aborts mid-body and keeps serving', async () => {
     const logs: string[] = [];

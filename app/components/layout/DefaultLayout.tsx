@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { ActionIcon, AppShell, Button, Flex, Text, NavLink, Group, Loader, Paper, Tooltip, UnstyledButton } from '@mantine/core';
 import { useHotkeys } from '@mantine/hooks';
 import { useAuth } from '~/lib/auth';
@@ -8,7 +8,8 @@ import { ColorSchemeToggle } from './ColorSchemeToggle';
 import { Logo, Mark } from './Logo';
 import { QuickEntryTips } from './QuickEntryTips';
 import { IconChartBar, IconHome, IconList, IconPlus, IconSettings, IconTarget } from '@tabler/icons-react';
-import { Link, NavLink as RouterNavLink, useLocation } from 'react-router';
+import { Link, NavLink as RouterNavLink, useLocation, useNavigate } from 'react-router';
+import { rememberConnectReturn, takeConnectReturn } from '~/lib/connectReturn';
 import { TransactionSheet } from '../transactions/TransactionSheet';
 import { LaunchIntent } from './LaunchIntent';
 import { OfflineQueueBanner } from './OfflineQueueBanner';
@@ -141,6 +142,23 @@ function useSessionState(): SessionState {
   return 'signedOut';
 }
 
+// Sign-in can leave /connect (Auth0 comes back to the home page), so the request is kept and the visitor sent back to it.
+function useConnectReturn(session: SessionState): void {
+  const { pathname, search } = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (session !== 'signedOut' && session !== 'sessionEnded') return;
+    if (pathname === '/connect') rememberConnectReturn(`${pathname}${search}`);
+  }, [session, pathname, search]);
+
+  useEffect(() => {
+    if (session !== 'signedIn' || pathname !== '/') return;
+    const back = takeConnectReturn();
+    if (back) navigate(back, { replace: true });
+  }, [session, pathname, navigate]);
+}
+
 function MainContent({ session, children }: { session: SessionState; children: React.ReactNode }) {
   const { pathname } = useLocation();
   if (isPublicPath(pathname)) return <>{children}</>;
@@ -185,6 +203,7 @@ function LayoutShell({ children }: { children: React.ReactNode }) {
   const [{ shortcutN }] = usePreferences();
   const session = useSessionState();
   const signedIn = session === 'signedIn';
+  useConnectReturn(session);
 
   useHotkeys(shortcutN && signedIn ? [['n', () => {
     if (document.querySelector('[role="dialog"]')) return;

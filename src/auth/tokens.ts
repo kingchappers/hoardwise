@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import type { Item, Store } from '../store';
+import { ConditionFailedError, type Item, type Store, type TxOp } from '../store';
+import { CODES_PK, REFRESH_PK, REFRESH_USED_PK } from '../oauth/types';
 import { hashToken } from './localData';
 
 export type TokenScope = 'read' | 'write';
@@ -13,7 +14,7 @@ export const LAST_USED_INTERVAL_SECONDS = 3600;
 const SECONDS_PER_DAY = 24 * 60 * 60;
 const PREFIX_LENGTH = 8;
 // One shared partition, because Store.query lists a single partition and a lookup must find a token by hash alone.
-const LOOKUP_PK = 'AUTH#TOKENS';
+export const LOOKUP_PK = 'AUTH#TOKENS';
 
 export interface TokenRecord {
   tokenId: string;
@@ -23,6 +24,7 @@ export interface TokenRecord {
   expiresAt: number | null;
   lastUsedAt: number | null;
   prefix: string;
+  kind?: 'oauth';
 }
 
 export interface StoredToken extends TokenRecord {
@@ -37,12 +39,13 @@ export class TokenLimitError extends Error {
   }
 }
 
-function listingPk(userId: string): string {
+export function listingPk(userId: string): string {
   return `AUTH#TOKENLIST#${userId}`;
 }
 
 function toRecord(item: Item): TokenRecord {
   return {
+    ...(item.kind === 'oauth' ? { kind: 'oauth' as const } : {}),
     tokenId: String(item.tokenId),
     name: String(item.name),
     scope: item.scope === 'write' ? 'write' : 'read',
@@ -106,25 +109,73 @@ export async function touchToken(store: Store, stored: StoredToken, nowSeconds: 
   await store.patch({ PK: listingPk(stored.userId), SK: stored.tokenId }, fields, { mustExist: true });
 }
 
-export async function revokeToken(store: Store, userId: string, tokenId: string): Promise<boolean> {
-  const listing = await store.get({ PK: listingPk(userId), SK: tokenId });
-  if (!listing) return false;
-  await store.transact([
+const MAX_REVOKE_ATTEMPTS = 3;
+
+function revokeOps(userId: string, tokenId: string, listing: Item, requireRefresh: boolean): TxOp[] {
+  const ops: TxOp[] = [
     { delete: { PK: LOOKUP_PK, SK: String(listing.hash) } },
     { delete: { PK: listingPk(userId), SK: tokenId } },
-  ]);
-  return true;
+  ];
+  // An OAuth connection's refresh row goes in the same transaction. It is required to exist: a rotation deletes the old
+  // refresh row, so a rotation that committed after the listing was read makes this fail instead of deleting stale hashes.
+  if (typeof listing.refreshHash === 'string') {
+    ops.push({ delete: { PK: REFRESH_PK, SK: listing.refreshHash }, ifPresent: requireRefresh });
+  }
+  return ops;
 }
 
-export async function revokeAllTokens(store: Store): Promise<void> {
-  const lookups = await store.query(LOOKUP_PK);
-  const userIds = new Set(lookups.map((item) => String(item.userId)));
-  for (const userId of userIds) {
-    for (const { PK, SK } of await store.query(listingPk(userId))) {
-      await store.delete({ PK, SK });
+export async function revokeToken(store: Store, userId: string, tokenId: string): Promise<boolean> {
+  let listing = await store.get({ PK: listingPk(userId), SK: tokenId });
+  if (!listing) return false;
+
+  for (let attempt = 0; attempt < MAX_REVOKE_ATTEMPTS; attempt++) {
+    try {
+      await store.transact(revokeOps(userId, tokenId, listing, true));
+      return true;
+    } catch (error) {
+      if (!(error instanceof ConditionFailedError)) throw error;
     }
+    const current = await store.get({ PK: listingPk(userId), SK: tokenId });
+    if (!current) return true;
+    if (current.refreshHash === listing.refreshHash) {
+      // The hashes did not move, so the refresh row is gone for another reason (its TTL purge): a live connection must still be revocable.
+      await store.transact(revokeOps(userId, tokenId, current, false));
+      return true;
+    }
+    listing = current;
   }
-  for (const { PK, SK } of lookups) {
-    await store.delete({ PK, SK });
+  throw new Error('Could not revoke the token because it kept changing');
+}
+
+const MAX_SWEEP_PASSES = 3;
+
+async function deleteAll(store: Store, rows: Item[]): Promise<void> {
+  for (const { PK, SK } of rows) await store.delete({ PK, SK });
+}
+
+// Used on password recovery. Refresh rows go first: a rotation needs its old refresh row to exist, so one racing the sweep fails
+// instead of recreating a connection, and anything it did slip in is caught by the next pass.
+export async function revokeAllTokens(store: Store): Promise<void> {
+  // A code issued just before recovery must not be exchangeable afterwards.
+  await deleteAll(store, await store.query(CODES_PK));
+  for (let pass = 0; pass < MAX_SWEEP_PASSES; pass++) {
+    const refresh = await store.query(REFRESH_PK);
+    const used = await store.query(REFRESH_USED_PK);
+    await deleteAll(store, refresh);
+    await deleteAll(store, used);
+
+    const lookups = await store.query(LOOKUP_PK);
+    const userIds = new Set([...lookups, ...refresh, ...used].map((item) => String(item.userId)));
+    for (const userId of userIds) await deleteAll(store, await store.query(listingPk(userId)));
+    await deleteAll(store, lookups);
+
+    const leftovers = [REFRESH_PK, REFRESH_USED_PK, LOOKUP_PK];
+    const remaining = (await Promise.all([
+      ...leftovers.map((pk) => store.query(pk)),
+      ...[...userIds].map((userId) => store.query(listingPk(userId))),
+    ])).flat();
+    if (remaining.length === 0) return;
   }
+  // Recovery must not finish with a credential still alive: failing here keeps it closed and logged.
+  throw new Error('Could not revoke every access token');
 }

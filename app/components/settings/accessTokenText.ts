@@ -38,9 +38,21 @@ export function isExpired(token: AccessToken, nowSeconds: number = nowInSeconds(
 }
 
 export function expiryText(token: AccessToken, nowSeconds: number = nowInSeconds()): string {
+  if (isConnection(token)) return connectionExpiryText(token, nowSeconds);
   if (token.expiresAt === null) return 'Never expires';
   if (isExpired(token, nowSeconds)) return `Expired ${formatTokenDate(token.expiresAt)}`;
   return `Expires ${formatTokenDate(token.expiresAt)}`;
+}
+
+export function isConnection(token: AccessToken): boolean {
+  return token.kind === 'oauth';
+}
+
+// A connection's expiry is when it lapses unless the assistant keeps using it.
+export function connectionExpiryText(token: AccessToken, nowSeconds: number = nowInSeconds()): string {
+  if (token.expiresAt === null) return 'Connected';
+  if (isExpired(token, nowSeconds)) return `Connection ended ${formatTokenDate(token.expiresAt)}`;
+  return `Connected until ${formatTokenDate(token.expiresAt)}`;
 }
 
 export function lastUsedText(token: AccessToken): string {

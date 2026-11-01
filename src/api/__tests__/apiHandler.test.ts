@@ -47,6 +47,7 @@ vi.mock('../../store', () => ({ initStore: mockInitStore }));
 
 import { handler } from '../../../api-handler';
 import { SECURITY_HEADERS } from '../constants';
+import { MemoryStore } from '../../store/memory';
 
 const TOKEN = 'secret-token-abc123';
 
@@ -300,5 +301,65 @@ describe('store start-up', () => {
     expect(JSON.parse(res.body)).toEqual({ error: 'Internal server error' });
     expect(res.body).not.toContain('DYNAMODB_TABLE');
     expect(handlerCalls()).toEqual([]);
+  });
+});
+
+describe('public OAuth routes (R2)', () => {
+  const PATHS: Array<[string, string]> = [
+    ['GET', '/.well-known/oauth-protected-resource'],
+    ['GET', '/.well-known/oauth-authorization-server'],
+    ['POST', '/api/oauth/register'],
+    ['POST', '/api/oauth/token'],
+    ['POST', '/api/oauth/revoke'],
+  ];
+
+  afterEach(() => {
+    delete process.env.APP_ORIGIN;
+  });
+
+  function bearerEvent(method: string, path: string): APIGatewayProxyEventV2 {
+    const event = makeEvent({ method, path, authorization: 'Bearer hwr_not_a_real_token' });
+    return { ...event, body: JSON.stringify({ redirect_uris: ['https://claude.ai/cb'] }) } as APIGatewayProxyEventV2;
+  }
+
+  it.each(PATHS)('answers %s %s without touching the auth provider, even with a Bearer hwr_ header', async (method, path) => {
+    process.env.APP_ORIGIN = 'https://hoard.example';
+    mockInitStore.mockRejectedValue(new Error('store must not be needed for discovery'));
+    const res = await invoke(bearerEvent(method, path));
+    expect(res.statusCode).not.toBe(401);
+    if (method === 'GET') expect(res.statusCode).toBe(200);
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockGetSigningKey).not.toHaveBeenCalled();
+    expect(handlerCalls()).toEqual([]);
+  });
+
+  it('registers a client on POST /api/oauth/register with a Bearer hwr_ header, never reaching auth or the token branch', async () => {
+    process.env.APP_ORIGIN = 'https://hoard.example';
+    mockInitStore.mockResolvedValue(new MemoryStore());
+    const res = await invoke(bearerEvent('POST', '/api/oauth/register'));
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.body);
+    expect(body.client_id).toEqual(expect.any(String));
+    expect(body).not.toHaveProperty('client_secret');
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockGetSigningKey).not.toHaveBeenCalled();
+    expect(handlerCalls()).toEqual([]);
+  });
+
+  it.each(PATHS)('answers %s %s with 404 and touches neither auth nor the store when no origin is set', async (method, path) => {
+    delete process.env.APP_ORIGIN;
+    const res = await invoke(bearerEvent(method, path));
+    expect(res.statusCode).toBe(404);
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockGetSigningKey).not.toHaveBeenCalled();
+    expect(mockInitStore).not.toHaveBeenCalled();
+  });
+
+  it('serves discovery with 200 when the store throws on init', async () => {
+    process.env.APP_ORIGIN = 'https://hoard.example';
+    mockInitStore.mockRejectedValue(new Error('down'));
+    const res = await invoke(makeEvent({ path: '/.well-known/oauth-protected-resource', authorization: null }));
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).resource).toBe('https://hoard.example/mcp');
   });
 });

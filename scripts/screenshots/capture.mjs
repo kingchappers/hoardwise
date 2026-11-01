@@ -14,6 +14,12 @@ import { createStore, referenceNow } from './fixtures.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const OUT_DIR = path.join(ROOT, 'public', 'about');
 
+// The pages are loaded at this invented host, which Chromium maps to the dev server, so the address the app
+// shows (Settings > AI assistants) is the same on every run instead of a random local port. A .localhost host
+// is a secure context (the Auth0 SDK needs one) and Vite allows it without extra configuration.
+const SHOT_HOST = 'hoardwise.localhost';
+const SHOT_ORIGIN = `http://${SHOT_HOST}`;
+
 function refuseRealTenant() {
   for (const [name, dummy] of Object.entries(DUMMY_ENV)) {
     const existing = process.env[name];
@@ -113,19 +119,19 @@ async function main() {
   const failures = [];
   let browser;
   try {
-    browser = await chromium.launch();
+    browser = await chromium.launch({ args: [`--host-resolver-rules=MAP ${SHOT_HOST} localhost:${port}`] });
     const now = referenceNow();
     const store = createStore(now);
     // The first load makes Vite re-optimise its dependencies, which reloads the page. Do it once up front.
     const warm = await browser.newPage();
-    await warm.goto(url, { waitUntil: 'networkidle' });
+    await warm.goto(SHOT_ORIGIN, { waitUntil: 'networkidle' });
     await warm.waitForTimeout(3000);
     await warm.close();
 
     for (const shot of SHOTS) {
       for (const sizeName of Object.keys(SIZES)) {
         for (const scheme of SCHEMES) {
-          await capture(browser, url, store, now, failures, shot, sizeName, scheme);
+          await capture(browser, SHOT_ORIGIN, store, now, failures, shot, sizeName, scheme);
           console.log(`saved ${shotFileName(shot.id, sizeName, scheme)}`);
         }
       }

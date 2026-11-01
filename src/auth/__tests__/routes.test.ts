@@ -307,6 +307,18 @@ describe('password recovery', () => {
     expect((await login(PASSWORD))?.statusCode).toBe(401);
   });
 
+  it('does not replace the password when the tokens cannot all be revoked', async () => {
+    await openRecovery();
+    const realQuery = store.query.bind(store);
+    vi.spyOn(store, 'query').mockImplementation(async (pk, ...rest) =>
+      pk === 'AUTH#TOKENS' ? [{ PK: pk, SK: 'stuck', userId: 'u' }] : realQuery(pk, ...rest));
+    await expect(handleAuthRoute(post('/api/auth/setup', recoveryBody()), ctx)).rejects.toThrow('Could not revoke every access token');
+    vi.restoreAllMocks();
+    expect(ctx.recovery).toBe(false);
+    expect((await login(PASSWORD))?.statusCode).toBe(200);
+    expect((await login(NEW_PASSWORD))?.statusCode).toBe(401);
+  });
+
   it('completing a recovery revokes every access token', async () => {
     const { account } = await openRecovery();
 
