@@ -23,6 +23,7 @@ describe('exportUser', () => {
 describe('saved styles', () => {
   const styleRows = [
     { PK: 'USER#auth0|abc', SK: 'STYLE#s1', styleId: 's1', name: 'Big number', description: 'One figure' },
+    { PK: 'USER#auth0|abc', SK: 'STYLENAME#big number', styleId: 's1' },
     { PK: 'USER#auth0|abc', SK: 'STYLEDEFAULT', styleId: 's1' },
   ];
 
@@ -31,11 +32,11 @@ describe('saved styles', () => {
     await seed(source);
     for (const row of styleRows) await source.put(row);
     const items = await exportUser(source, 'auth0|abc');
-    expect(items.map(item => item.SK)).toEqual(expect.arrayContaining(['STYLE#s1', 'STYLEDEFAULT']));
+    expect(items.map(item => item.SK)).toEqual(expect.arrayContaining(['STYLE#s1', 'STYLENAME#big number', 'STYLEDEFAULT']));
 
     const target = new SqliteStore(':memory:');
     await importUser(target, items, { asUser: 'new' });
-    expect((await target.query('USER#new')).map(item => item.SK)).toEqual(expect.arrayContaining(['STYLE#s1', 'STYLEDEFAULT']));
+    expect((await target.query('USER#new')).map(item => item.SK)).toEqual(expect.arrayContaining(['STYLE#s1', 'STYLENAME#big number', 'STYLEDEFAULT']));
   });
 
   it('removes styles that the replaced data did not have, and restores an old export with none', async () => {
@@ -48,6 +49,7 @@ describe('saved styles', () => {
     const sks = (await store.query('USER#auth0|abc')).map(item => item.SK);
     expect(sks).not.toContain('STYLE#s1');
     expect(sks).not.toContain('STYLEDEFAULT');
+    expect(sks).not.toContain('STYLENAME#big number');
   });
 });
 

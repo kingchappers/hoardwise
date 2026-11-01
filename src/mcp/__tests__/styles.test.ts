@@ -93,7 +93,7 @@ describe('saveStyle', () => {
     await save(store, 'One');
     await save(store, 'Two');
     expect(await save(store, 'two', { renameFrom: 'One' })).toMatchObject({ error: expect.stringContaining('already') });
-    expect(await save(store, 'x', { renameFrom: 'Nope' })).toMatchObject({ error: expect.stringContaining('Nope') });
+    expect(await save(store, 'x', { renameFrom: 'Nope' })).toMatchObject({ error: 'There is no saved style with that name.' });
     expect(await listStyles(store, 'u1')).toHaveLength(2);
   });
 
@@ -179,7 +179,112 @@ class YieldingStore extends MemoryStore {
     await new Promise(resolve => setTimeout(resolve, item.SK === 'STYLEDEFAULT' ? 0 : 5));
     await super.put(item, opts);
   }
+
+  override async transact(ops: Parameters<MemoryStore['transact']>[0]): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, 5));
+    await super.transact(ops);
+  }
 }
+
+async function expectConsistentNames(target: MemoryStore): Promise<void> {
+  const styles = await listStyles(target, 'u1');
+  const keys = await target.query('USER#u1', { skPrefix: 'STYLENAME#' });
+  expect(new Set(styles.map(s => s.name.toLowerCase())).size).toBe(styles.length);
+  expect(keys).toHaveLength(styles.length);
+  for (const key of keys) {
+    const owner = styles.find(s => s.styleId === key.styleId);
+    expect(owner).toBeDefined();
+    expect(key.SK).toBe(`STYLENAME#${owner?.name.toLowerCase()}`);
+  }
+}
+
+describe('unique names under concurrency', () => {
+  it('lets only one of two concurrent saves of the same new name create it', async () => {
+    const racing = new YieldingStore();
+    const results = await Promise.all([save(racing, 'Fresh'), save(racing, 'fresh')]);
+    expect(results.filter(r => 'style' in r)).toHaveLength(1);
+    expect(results.filter(r => 'error' in r)).toEqual([{ error: expect.stringContaining('already') }]);
+    expect(await listStyles(racing, 'u1')).toHaveLength(1);
+    await expectConsistentNames(racing);
+  });
+
+  it('leaves no duplicate and no orphan key when two renames collide', async () => {
+    const racing = new YieldingStore();
+    await save(racing, 'One');
+    await save(racing, 'Two');
+    const results = await Promise.all([save(racing, 'Fresh', { renameFrom: 'One' }), save(racing, 'Fresh', { renameFrom: 'Two' })]);
+    expect(results.filter(r => 'style' in r)).toHaveLength(1);
+    expect((await listStyles(racing, 'u1')).filter(s => s.name === 'Fresh')).toHaveLength(1);
+    await expectConsistentNames(racing);
+  });
+
+  it('frees the old name on rename and on delete', async () => {
+    await save(store, 'One');
+    await save(store, 'Two', { renameFrom: 'One' });
+    expect(await save(store, 'One')).toMatchObject({ created: true });
+    expect(await deleteStyle(store, 'u1', 'Two')).toBe(true);
+    expect(await save(store, 'two')).toMatchObject({ created: true });
+    await expectConsistentNames(store);
+  });
+
+  it('keeps the key when only the case of the name changes', async () => {
+    await save(store, 'One');
+    await save(store, 'ONE', { renameFrom: 'one' });
+    expect((await listStyles(store, 'u1')).map(s => s.name)).toEqual(['ONE']);
+    await expectConsistentNames(store);
+  });
+
+  it('never lists the name keys or the default marker as styles', async () => {
+    await save(store, 'One', { makeDefault: true });
+    await save(store, 'Two');
+    expect(await listStyles(store, 'u1')).toHaveLength(2);
+    expect(await store.query('USER#u1', { skPrefix: 'STYLE#' })).toHaveLength(2);
+    expect(await store.query('USER#u1', { skPrefix: 'STYLENAME#' })).toHaveLength(2);
+  });
+});
+
+describe('a style deleted mid-update', () => {
+  class DeleteAfterRead extends MemoryStore {
+    afterQuery: (() => Promise<void>) | undefined;
+    override async query(pk: string, opts?: Parameters<MemoryStore['query']>[1]) {
+      const rows = await super.query(pk, opts);
+      const hook = this.afterQuery;
+      this.afterQuery = undefined;
+      if (hook) await hook();
+      return rows;
+    }
+  }
+
+  it('is not resurrected by an update of its description', async () => {
+    const racing = new DeleteAfterRead();
+    await save(racing, 'One');
+    racing.afterQuery = async () => { await deleteStyle(racing, 'u1', 'One'); };
+    const result = await saveStyle(racing, 'u1', { name: 'One', description: 'Changed', makeDefault: undefined, renameFrom: undefined }, NOW);
+    expect(result).toMatchObject({ error: expect.stringContaining('no longer exists') });
+    expect(await listStyles(racing, 'u1')).toEqual([]);
+    expect(await racing.query('USER#u1', { skPrefix: 'STYLENAME#' })).toEqual([]);
+  });
+
+  it('is not resurrected by a rename', async () => {
+    const racing = new DeleteAfterRead();
+    await save(racing, 'One');
+    racing.afterQuery = async () => { await deleteStyle(racing, 'u1', 'One'); };
+    const result = await save(racing, 'Two', { renameFrom: 'One' });
+    expect(result).toMatchObject({ error: expect.stringContaining('no longer exists') });
+    expect(await racing.query('USER#u1')).toEqual([]);
+  });
+});
+
+describe('lookup names', () => {
+  it('does not echo the name in the error, and refuses long or non-string values', async () => {
+    const missing = await save(store, 'x', { renameFrom: 'Secret thing' });
+    expect(missing).toEqual({ error: 'There is no saved style with that name.' });
+    expect(await save(store, 'x', { renameFrom: 'y'.repeat(41) })).toMatchObject({ error: expect.any(String) });
+    expect(await save(store, 'x', { renameFrom: 5 as unknown as string })).toMatchObject({ error: expect.any(String) });
+    expect(await deleteStyle(store, 'u1', 'y'.repeat(41))).toBe(false);
+    expect(await deleteStyle(store, 'u1', 5 as unknown as string)).toBe(false);
+  });
+});
 
 describe('concurrent default switches', () => {
   it('leave exactly one default, and it names an existing style', async () => {

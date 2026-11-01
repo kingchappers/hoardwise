@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { pk, styleSk, STYLE_DEFAULT_SK } from '../api/db';
-import { ConditionFailedError, type Item, type Store } from '../store';
+import { pk, styleSk, styleNameSk, STYLE_DEFAULT_SK } from '../api/db';
+import { ConditionFailedError, type Item, type Store, type TxOp } from '../store';
 
 export const MAX_STYLES = 20;
 export const MAX_STYLE_NAME = 40;
@@ -87,6 +87,49 @@ interface SaveInput {
   renameFrom: string | undefined;
 }
 
+const NAME_TAKEN = 'Another saved style already has that name.';
+const NOT_FOUND = 'There is no saved style with that name.';
+const GONE = 'That style no longer exists.';
+
+function lookupName(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const name = value.trim();
+  return name === '' || name.length > MAX_STYLE_NAME ? undefined : name;
+}
+
+type StyleRow = { createdAt: string; updatedAt: string; name: string; description: string; styleId: string };
+
+async function writeStyle(
+  store: Store,
+  userId: string,
+  existing: GraphicStyle | undefined,
+  row: StyleRow,
+): Promise<string | undefined> {
+  const styleKey = { PK: pk(userId), SK: styleSk(row.styleId) };
+  const newKey = { PK: pk(userId), SK: styleNameSk(row.name) };
+  try {
+    if (!existing) {
+      await store.transact([{ put: { ...styleKey, ...row } }, { put: { ...newKey, styleId: row.styleId }, ifAbsent: true }]);
+    } else if (styleNameSk(existing.name) === newKey.SK) {
+      await store.patch(styleKey, { name: row.name, description: row.description, updatedAt: row.updatedAt }, { mustExist: true });
+    } else {
+      // The old name key goes away in the same transaction as the style, so it exists only while the style does.
+      await store.transact([
+        { put: { ...styleKey, ...row } },
+        { delete: { PK: pk(userId), SK: styleNameSk(existing.name) }, ifPresent: true },
+        { put: { ...newKey, styleId: row.styleId }, ifAbsent: true },
+      ]);
+    }
+  } catch (error) {
+    if (!(error instanceof ConditionFailedError)) throw error;
+    if (!existing) return NAME_TAKEN;
+    if (styleNameSk(existing.name) === newKey.SK) return GONE;
+    // The failing index is not reliable on every store, so look at whether the style is still there.
+    return (await store.get(styleKey)) ? NAME_TAKEN : GONE;
+  }
+  return undefined;
+}
+
 export async function saveStyle(
   store: Store,
   userId: string,
@@ -95,16 +138,16 @@ export async function saveStyle(
 ): Promise<{ style: GraphicStyle; created: boolean } | { error: string }> {
   const text = validateStyleText(input);
   if (!text.ok) return { error: text.message };
+  const renameFrom = input.renameFrom === undefined ? undefined : lookupName(input.renameFrom);
+  if (input.renameFrom !== undefined && renameFrom === undefined) return { error: NOT_FOUND };
 
   const styles = await readStyles(store, userId);
-  const renamed = input.renameFrom === undefined ? undefined : styles.find(s => sameName(s.name, input.renameFrom as string));
-  if (input.renameFrom !== undefined && !renamed) return { error: `There is no saved style named "${input.renameFrom.trim()}".` };
+  const renamed = renameFrom === undefined ? undefined : styles.find(s => sameName(s.name, renameFrom));
+  if (renameFrom !== undefined && !renamed) return { error: NOT_FOUND };
 
   const existing = renamed ?? styles.find(s => sameName(s.name, text.name));
   const clash = styles.find(s => sameName(s.name, text.name));
-  if (clash && existing && clash.styleId !== existing.styleId) {
-    return { error: 'Another saved style already has that name.' };
-  }
+  if (clash && existing && clash.styleId !== existing.styleId) return { error: NAME_TAKEN };
   if (!existing && styles.length >= MAX_STYLES) {
     return { error: `You can save at most ${MAX_STYLES} styles. Delete one first.` };
   }
@@ -112,9 +155,9 @@ export async function saveStyle(
   const iso = now.toISOString();
   const styleId = existing?.styleId ?? randomUUID();
   const createdAt = existing?.createdAt ?? iso;
-  await store.put({
-    PK: pk(userId), SK: styleSk(styleId), styleId, name: text.name, description: text.description, createdAt, updatedAt: iso,
-  });
+  const row = { styleId, name: text.name, description: text.description, createdAt, updatedAt: iso };
+  const failure = await writeStyle(store, userId, existing, row);
+  if (failure) return { error: failure };
 
   let isDefault = existing?.isDefault ?? false;
   if (input.makeDefault === true) {
@@ -125,24 +168,22 @@ export async function saveStyle(
     isDefault = false;
   }
 
-  return {
-    style: { styleId, name: text.name, description: text.description, isDefault, createdAt, updatedAt: iso },
-    created: !existing,
-  };
+  return { style: { ...row, isDefault }, created: !existing };
 }
 
 export async function deleteStyle(store: Store, userId: string, name: string): Promise<boolean> {
-  const styles = await readStyles(store, userId);
-  const found = styles.find(s => sameName(s.name, name));
+  const wanted = lookupName(name);
+  if (wanted === undefined) return false;
+  const found = (await readStyles(store, userId)).find(s => sameName(s.name, wanted));
   if (!found) return false;
 
-  const key = { PK: pk(userId), SK: styleSk(found.styleId) };
+  const ops: TxOp[] = [
+    { delete: { PK: pk(userId), SK: styleSk(found.styleId) }, ifPresent: true },
+    { delete: { PK: pk(userId), SK: styleNameSk(found.name) } },
+  ];
+  if (found.isDefault) ops.push({ delete: { PK: pk(userId), SK: STYLE_DEFAULT_SK } });
   try {
-    if (found.isDefault) {
-      await store.transact([{ delete: key, ifPresent: true }, { delete: { PK: pk(userId), SK: STYLE_DEFAULT_SK } }]);
-    } else {
-      await store.delete(key, { ifPresent: true });
-    }
+    await store.transact(ops);
   } catch (error) {
     if (error instanceof ConditionFailedError) return false;
     throw error;

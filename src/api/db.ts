@@ -16,4 +16,6 @@ export const pushIndexSk = (userId: string): string => `USER#${userId}`;
 
 // Saved graphic styles: one row per style, plus one marker naming the default (so there can never be two).
 export const styleSk = (styleId: string): string => `STYLE#${styleId}`;
+// One row per style name (lowercased), written with ifAbsent: it is what keeps names unique under concurrency.
+export const styleNameSk = (name: string): string => `STYLENAME#${name.trim().toLowerCase()}`;
 export const STYLE_DEFAULT_SK = 'STYLEDEFAULT';
