@@ -20,6 +20,37 @@ describe('exportUser', () => {
   });
 });
 
+describe('saved styles', () => {
+  const styleRows = [
+    { PK: 'USER#auth0|abc', SK: 'STYLE#s1', styleId: 's1', name: 'Big number', description: 'One figure' },
+    { PK: 'USER#auth0|abc', SK: 'STYLEDEFAULT', styleId: 's1' },
+  ];
+
+  it('exports and re-imports styles and the default marker', async () => {
+    const source = new SqliteStore(':memory:');
+    await seed(source);
+    for (const row of styleRows) await source.put(row);
+    const items = await exportUser(source, 'auth0|abc');
+    expect(items.map(item => item.SK)).toEqual(expect.arrayContaining(['STYLE#s1', 'STYLEDEFAULT']));
+
+    const target = new SqliteStore(':memory:');
+    await importUser(target, items, { asUser: 'new' });
+    expect((await target.query('USER#new')).map(item => item.SK)).toEqual(expect.arrayContaining(['STYLE#s1', 'STYLEDEFAULT']));
+  });
+
+  it('removes styles that the replaced data did not have, and restores an old export with none', async () => {
+    const store = new SqliteStore(':memory:');
+    await seed(store);
+    const oldExport = await exportUser(store, 'auth0|abc');
+    for (const row of styleRows) await store.put(row);
+
+    await importUser(store, oldExport, { asUser: 'auth0|abc', replace: true });
+    const sks = (await store.query('USER#auth0|abc')).map(item => item.SK);
+    expect(sks).not.toContain('STYLE#s1');
+    expect(sks).not.toContain('STYLEDEFAULT');
+  });
+});
+
 describe('JSONL', () => {
   it('round-trips items, including null and expiry', async () => {
     const store = new SqliteStore(':memory:');
