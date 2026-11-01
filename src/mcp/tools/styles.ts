@@ -5,10 +5,11 @@ import { PRIVACY_NOTE, READ_ONLY, WRITES_OWN_DATA, clip } from './shared';
 
 const NOT_FOUND = 'There is no saved style with that name.';
 
-// Returns a plain message for the first argument that is not one of the allowed fields.
+const UNKNOWN_FIELD = 'That tool does not take that field.';
+
+// A fixed message, so an unvalidated key is never echoed back.
 function unknownField(args: Record<string, unknown>, allowed: string[]): string | undefined {
-  const extra = Object.keys(args).find(key => !allowed.includes(key));
-  return extra === undefined ? undefined : `Unknown field: ${extra.slice(0, 40)}`;
+  return Object.keys(args).some(key => !allowed.includes(key)) ? UNKNOWN_FIELD : undefined;
 }
 
 const nameProperty = { type: 'string', description: 'The style name, at most 40 characters of plain text.' };

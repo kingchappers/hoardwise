@@ -1,5 +1,5 @@
 import type { McpTool } from '../types';
-import { READ_ONLY } from './shared';
+import { PRIVACY_NOTE, READ_ONLY } from './shared';
 import { defaultStyleFor } from './styles';
 
 // From docs/brand.md. Static, so it is the same for everyone and holds no money amounts.
@@ -35,6 +35,8 @@ export const displayGuidanceTool: McpTool = {
   annotations: READ_ONLY,
   async run(_args, context) {
     const defaultStyle = await defaultStyleFor(context.userId);
-    return { ok: true, data: { principles: PRINCIPLES, variations: VARIATIONS, defaultStyle, styleNote: STYLE_NOTE } };
+    const data = { principles: PRINCIPLES, variations: VARIATIONS, defaultStyle, styleNote: STYLE_NOTE };
+    // The note goes only with the person's own text.
+    return { ok: true, data: defaultStyle ? { note: PRIVACY_NOTE, ...data } : data };
   },
 };
