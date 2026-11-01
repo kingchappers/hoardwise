@@ -3,7 +3,7 @@ import { Button, Group, Paper, Stack, Text } from '@mantine/core';
 import { IconClockX, IconEye, IconPencil } from '@tabler/icons-react';
 import { useAccessTokens, useRevokeAccessToken } from '~/lib/queries';
 import type { AccessToken, AccessTokenScope } from '~/lib/types';
-import { SCOPE_LABELS, expiryText, formatTokenDate, isExpired, lastUsedText } from './accessTokenText';
+import { SCOPE_LABELS, expiryText, isConnection, formatTokenDate, isExpired, lastUsedText } from './accessTokenText';
 
 const REVOKE_FAILED = "Couldn't revoke that token. Try again.";
 
@@ -29,18 +29,23 @@ function ExpiryLabel({ token }: { token: AccessToken }): React.JSX.Element {
 
 interface RevokeConfirmationProps {
   name: string;
+  connection: boolean;
   busy: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-function RevokeConfirmation({ name, busy, onConfirm, onCancel }: RevokeConfirmationProps): React.JSX.Element {
+function RevokeConfirmation({ name, connection, busy, onConfirm, onCancel }: RevokeConfirmationProps): React.JSX.Element {
   const questionId = useId();
   return (
     <Stack gap="xs" mt="sm" role="group" aria-labelledby={questionId}>
-      <Text size="sm" id={questionId}>Revoke “{name}”? Anything using it will stop working.</Text>
+      <Text size="sm" id={questionId}>
+        {connection
+          ? `Disconnect “${name}”? It will stop working until you connect it again.`
+          : `Revoke “${name}”? Anything using it will stop working.`}
+      </Text>
       <Group gap="sm">
-        <Button color="ember" loading={busy} onClick={onConfirm}>Revoke token</Button>
+        <Button color="ember" loading={busy} onClick={onConfirm}>{connection ? 'Disconnect' : 'Revoke token'}</Button>
         <Button variant="default" autoFocus disabled={busy} onClick={onCancel}>Cancel</Button>
       </Group>
     </Stack>
@@ -80,6 +85,8 @@ function AccessTokenRow({ token, onRevoked }: AccessTokenRowProps): React.JSX.El
     }
   }
 
+  const connection = isConnection(token);
+
   return (
     <Paper component="li" withBorder p="sm" aria-labelledby={nameId}>
       <Group justify="space-between" align="flex-start" wrap="nowrap">
@@ -88,16 +95,17 @@ function AccessTokenRow({ token, onRevoked }: AccessTokenRowProps): React.JSX.El
             <Text fw={600} id={nameId}>{token.name}</Text>
             <Text size="sm" ff="monospace">{token.prefix}…</Text>
           </Group>
+          {connection && <Text size="sm">Connected assistant</Text>}
           <ScopeLabel scope={token.scope} />
           <Text size="sm">Created {formatTokenDate(token.createdAt)}</Text>
           <ExpiryLabel token={token} />
           <Text size="sm">{lastUsedText(token)}</Text>
         </Stack>
-        <Button ref={revokeButton} variant="default" aria-label={`Revoke ${token.name}`} onClick={() => setConfirming(true)}>
-          Revoke
+        <Button ref={revokeButton} variant="default" aria-label={`${connection ? 'Disconnect' : 'Revoke'} ${token.name}`} onClick={() => setConfirming(true)}>
+          {connection ? 'Disconnect' : 'Revoke'}
         </Button>
       </Group>
-      {confirming && <RevokeConfirmation name={token.name} busy={busy} onConfirm={() => void confirm()} onCancel={cancel} />}
+      {confirming && <RevokeConfirmation name={token.name} connection={connection} busy={busy} onConfirm={() => void confirm()} onCancel={cancel} />}
       {failed && <Text size="sm" mt="xs" role="alert">{REVOKE_FAILED}</Text>}
     </Paper>
   );

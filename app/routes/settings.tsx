@@ -3,6 +3,7 @@ import { Button, Card, Input, Radio, SegmentedControl, Select, Stack, Switch, Te
 import { IconChevronRight } from '@tabler/icons-react';
 import { DefaultLayout } from '~/components/layout/DefaultLayout';
 import { isDemo } from '~/demo/flag';
+import { AiAssistants } from '~/components/settings/AiAssistants';
 import { AccessTokens } from '~/components/settings/AccessTokens';
 import { BillReminders } from '~/components/settings/BillReminders';
 import { TOUR_PARAM } from '~/components/layout/GuidedTour';
@@ -50,6 +51,7 @@ function SettingsContent() {
         <Text size="sm">{SESSION_LIFETIME_TEXT}</Text>
       </Card>
 
+      {!isDemo && <AiAssistants />}
       {!isDemo && <AccessTokens />}
 
       <Card withBorder>

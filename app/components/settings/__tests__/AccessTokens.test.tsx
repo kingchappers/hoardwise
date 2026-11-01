@@ -48,6 +48,17 @@ const SCRIPT: AccessToken = {
   prefix: 'hww_Zx90',
 };
 
+const CONNECTION: AccessToken = {
+  tokenId: 'tok-9',
+  name: 'Claude <b>web</b>',
+  scope: 'read',
+  createdAt: seconds(2027, 3, 1),
+  expiresAt: seconds(2027, 6, 1),
+  lastUsedAt: seconds(2027, 3, 5),
+  prefix: 'hwr_Qq77',
+  kind: 'oauth',
+};
+
 const SECRET = 'hww_SuperSecretTokenValue0123456789abcdefghijk';
 
 function renderSection() {
@@ -112,6 +123,30 @@ describe('AccessTokens', () => {
       renderSection();
       const access = within(screen.getByRole('listitem', { name: 'Claude desktop' })).getByText('Read only');
       expect(access.parentElement?.querySelector('svg')).not.toBeNull();
+    });
+
+    it('shows a connection as a connected assistant, with its name as plain text', () => {
+      state.list = { ...state.list, data: [CONNECTION, SCRIPT] };
+      renderSection();
+      const row = screen.getByRole('listitem', { name: 'Claude <b>web</b>' });
+      expect(row).toHaveTextContent('Connected assistant');
+      expect(row).toHaveTextContent('Read only');
+      expect(row.querySelector('b')).toBeNull();
+      expect(within(row).getByText('Read only').parentElement?.querySelector('svg')).not.toBeNull();
+      expect(row).toHaveTextContent('Connected until 1 Jun 2027');
+      expect(row).not.toHaveTextContent('Expires');
+      expect(row).toHaveTextContent('Last used 5 Mar 2027');
+    });
+
+    it('disconnects a connection after confirming, in its own words', async () => {
+      state.list = { ...state.list, data: [CONNECTION] };
+      const user = userEvent.setup();
+      renderSection();
+      await user.click(screen.getByRole('button', { name: 'Disconnect Claude <b>web</b>' }));
+      expect(screen.getByText('Disconnect “Claude <b>web</b>”? It will stop working until you connect it again.')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Revoke token' })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Disconnect' }));
+      expect(state.revoke).toHaveBeenCalledWith('tok-9');
     });
 
     it('shows an empty state when there are no tokens', () => {
