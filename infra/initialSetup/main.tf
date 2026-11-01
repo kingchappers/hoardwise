@@ -349,7 +349,9 @@ data "aws_iam_policy_document" "github_iam_policy_document" {
     effect = "Allow"
     actions = [
       "logs:ListLogDeliveries",
+      "logs:GetLogDelivery",
       "logs:CreateLogDelivery",
+      "logs:UpdateLogDelivery",
       "logs:DeleteLogDelivery",
     ]
     resources = ["*"]
