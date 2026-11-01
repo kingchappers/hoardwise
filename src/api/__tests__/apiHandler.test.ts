@@ -47,6 +47,7 @@ vi.mock('../../store', () => ({ initStore: mockInitStore }));
 
 import { handler } from '../../../api-handler';
 import { SECURITY_HEADERS } from '../constants';
+import { MemoryStore } from '../../store/memory';
 
 const TOKEN = 'secret-token-abc123';
 
@@ -324,8 +325,20 @@ describe('public OAuth routes (R2)', () => {
     mockInitStore.mockRejectedValue(new Error('store must not be needed for discovery'));
     const res = await invoke(bearerEvent(method, path));
     expect(res.statusCode).not.toBe(401);
-    // Registration needs the store, which is made to fail here; the point is that auth is never consulted.
     if (method === 'GET') expect(res.statusCode).toBe(200);
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockGetSigningKey).not.toHaveBeenCalled();
+    expect(handlerCalls()).toEqual([]);
+  });
+
+  it('registers a client on POST /api/oauth/register with a Bearer hwr_ header, never reaching auth or the token branch', async () => {
+    process.env.APP_ORIGIN = 'https://hoard.example';
+    mockInitStore.mockResolvedValue(new MemoryStore());
+    const res = await invoke(bearerEvent('POST', '/api/oauth/register'));
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.body);
+    expect(body.client_id).toEqual(expect.any(String));
+    expect(body).not.toHaveProperty('client_secret');
     expect(mockVerify).not.toHaveBeenCalled();
     expect(mockGetSigningKey).not.toHaveBeenCalled();
     expect(handlerCalls()).toEqual([]);
