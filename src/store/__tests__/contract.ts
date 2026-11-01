@@ -22,6 +22,12 @@ export function runStoreContract(name: string, backend: ContractBackend, options
         expect(await store.get({ PK: newUser(), SK: 'CAT#missing' })).toBeUndefined();
       });
 
+      it('returns the item for a consistent read', async () => {
+        const PK = newUser();
+        await store.put({ PK, SK: 'CAT#a', name: 'Food' });
+        expect(await store.get({ PK, SK: 'CAT#a' }, { consistent: true })).toEqual({ PK, SK: 'CAT#a', name: 'Food' });
+      });
+
       it('stores an item and returns it with its keys', async () => {
         const PK = newUser();
         await store.put({ PK, SK: 'CAT#a', name: 'Food', amount: 350, archivedAt: null });

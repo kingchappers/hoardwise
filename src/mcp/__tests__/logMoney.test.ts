@@ -8,7 +8,7 @@ import { MAX_AMOUNT_PENCE } from '../../api/constants';
 import { catSk, pk, potSk, txnSk } from '../../api/db';
 import { createTransaction } from '../../api/transactions';
 import type { ApiResponse } from '../../api/types';
-import { setStore } from '../../store';
+import { ConditionFailedError, setStore } from '../../store';
 import { MemoryStore } from '../../store/memory';
 import { MCP_TOOLS } from '../tools';
 import { PRIVACY_NOTE } from '../tools/shared';
@@ -186,6 +186,73 @@ describe('retries', () => {
     const message = await refusal('log_income', { ...spend, categoryId: 'cat-salary' });
     expect(message).toMatch(/already used/);
     expect((await txns())[0].type).toBe('EXPENSE');
+  });
+});
+
+describe('retry races', () => {
+  const ConditionFailed = ConditionFailedError;
+
+  it('says the entry is still being saved, never to use a new id, when the winner cannot be read', async () => {
+    const stub = Object.assign(new MemoryStore(), {
+      put: vi.fn().mockRejectedValue(new ConditionFailed()),
+      get: vi.fn().mockResolvedValue(undefined),
+    });
+    setStore(stub);
+    const message = await refusal('log_spend', spend);
+    expect(message).toBe('That entry is still being saved. Try again with the same transactionId.');
+    expect(message).not.toMatch(/new one/i);
+    expect(stub.get).toHaveBeenCalledWith(expect.anything(), { consistent: true });
+  });
+
+  it('reports alreadyLogged when the winner is an identical entry', async () => {
+    const real = new MemoryStore();
+    await real.put({ PK: pk('user-a'), SK: txnSk('2026-10', ID), transactionId: ID, yearMonth: '2026-10', amount: 1250, type: 'EXPENSE', categoryId: 'cat-groceries', description: 'Corner shop', date: '2026-10-30', createdAt: 'x' });
+    const stub = Object.assign(real, { put: vi.fn().mockRejectedValue(new ConditionFailed()) });
+    setStore(stub);
+    expect((await data('log_spend', spend)).alreadyLogged).toBe(true);
+  });
+
+  it('treats an uppercase retry of a lowercase id as the same entry', async () => {
+    const first = await data('log_spend', spend);
+    expect(first.saved.transactionId).toBe(ID);
+    const again = await data('log_spend', { ...spend, transactionId: ID.toUpperCase() });
+    expect(again.alreadyLogged).toBe(true);
+    expect(again.saved.transactionId).toBe(ID);
+    expect(await txns()).toHaveLength(1);
+  });
+});
+
+describe('more argument checks', () => {
+  it('refuses an own __proto__ key with the fixed message', async () => {
+    const args = JSON.parse(`{"transactionId":"${ID}","amount":100,"categoryId":"cat-groceries","__proto__":{"x":1}}`);
+    expect(await refusal('log_spend', args)).toBe('That tool does not take that field.');
+    expect(await txns()).toHaveLength(0);
+  });
+
+  it('refuses Number.MAX_SAFE_INTEGER', async () => {
+    expect(await refusal('log_spend', { ...spend, amount: Number.MAX_SAFE_INTEGER })).toContain('amount');
+  });
+
+  it('accepts a leap day', async () => {
+    const result = await run('log_spend', { ...spend, date: '2028-02-29' }, 'user-a', new Date('2028-03-01T10:00:00.000Z'));
+    expect(result.ok).toBe(true);
+  });
+
+  it('refuses 2026-02-30', async () => {
+    expect(await refusal('log_spend', { ...spend, date: '2026-02-30' })).toContain('date');
+  });
+
+  it.each(['log_spend', 'log_income'])('%s says how to change or re-log an entry', name => {
+    expect(tool(name).description).toContain('To change an entry that is already logged, ask the person to edit it in Hoardwise; do not log it again. If they have deleted it, do not log it again unless they ask.');
+  });
+
+  it.each(['log_spend', 'log_income'])('%s advertises advisory limits in its schema', name => {
+    const props = (tool(name).inputSchema as any).properties;
+    expect(props.transactionId.pattern).toBeTruthy();
+    expect(props.amount).toMatchObject({ type: 'integer', minimum: 1, maximum: MAX_AMOUNT_PENCE });
+    expect(props.date.pattern).toBe('^\\d{4}-\\d{2}-\\d{2}$');
+    expect(props.categoryId.maxLength).toBe(100);
+    expect(props.description.maxLength).toBe(200);
   });
 });
 

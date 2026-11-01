@@ -21,7 +21,8 @@ export interface PatchOptions {
 }
 
 export interface Store {
-  get(key: Key): Promise<Item | undefined>;
+  // consistent asks for a strongly consistent read where the backend has a choice (DynamoDB); others ignore it.
+  get(key: Key, opts?: { consistent?: boolean }): Promise<Item | undefined>;
   put(item: Item, opts?: { ifAbsent?: boolean }): Promise<void>;
   patch(key: Key, fields: Record<string, unknown>, opts?: PatchOptions): Promise<Item>;
   delete(key: Key, opts?: { ifPresent?: boolean }): Promise<void>;

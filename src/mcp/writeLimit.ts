@@ -10,6 +10,7 @@ function createWriteLimiter(): RequestLimiter {
 
 let writeLimiter = createWriteLimiter();
 
+// The limit is per server instance: on AWS each Lambda instance counts separately, and the per-request limiter also applies.
 // Every attempt counts, successful or not, so a looping assistant cannot flood a budget with entries.
 export function allowWrite(userId: string, now: Date): boolean {
   return writeLimiter.allow(userId, Math.floor(now.getTime() / 1000));
