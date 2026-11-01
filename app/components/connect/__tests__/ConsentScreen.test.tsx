@@ -85,6 +85,20 @@ describe('ConsentScreen', () => {
     expect(container.querySelector('img')).toBeNull();
   });
 
+  it.each(['', '   '])('calls a client with the name %j "An app"', (name) => {
+    clientFound(name);
+    renderPage();
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('An app wants to connect to your Hoardwise');
+  });
+
+  it('marks the password field as the current password for password managers', async () => {
+    const user = userEvent.setup();
+    state.mode = 'local';
+    renderPage();
+    await user.click(screen.getByRole('radio', { name: /View and change/ }));
+    expect(screen.getByLabelText(/password/i)).toHaveAttribute('autocomplete', 'current-password');
+  });
+
   it('looks the client up with the validated parameters', () => {
     renderPage();
     expect(state.clientArgs).toEqual(['client-1', REDIRECT]);

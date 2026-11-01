@@ -1,4 +1,4 @@
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', '[::1]', 'localhost']);
+import { LOOPBACK_HOSTS } from './types';
 
 // The public origin the discovery documents advertise. It comes from configuration only, never from a request.
 // Unset or invalid means OAuth is disabled; the warning never includes the value, which could carry a credential.

@@ -31,7 +31,7 @@ const valid = {
 
 beforeEach(() => {
   store = new MemoryStore();
-  deps = { getStore: async () => store, discoveryLimiter: createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 }), origin: 'https://hoard.example', limiter: createFailureLimiter({ maxFailures: 10, windowSeconds: 3600, blockSeconds: 3600 }), tokenLimiter: createFailureLimiter(), revokeLimiter: createFailureLimiter(), nowSeconds: NOW };
+  deps = { getStore: async () => store, discoveryLimiter: createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 }), origin: 'https://hoard.example', limiter: createFailureLimiter({ maxFailures: 60, windowSeconds: 3600, blockSeconds: 3600 }), tokenLimiter: createFailureLimiter(), revokeLimiter: createFailureLimiter(), nowSeconds: NOW };
 });
 
 describe('POST /api/oauth/register', () => {
@@ -52,13 +52,43 @@ describe('POST /api/oauth/register', () => {
     expect(await getClient(store, body.client_id, NOW)).toBeDefined();
   });
 
+  it.each(['none', 'client_secret_post', 'client_secret_basic'])(
+    'registers a %s request as a public client, with no secret in the response',
+    async (method) => {
+      const res = await handleOauthPublic(post({ ...valid, token_endpoint_auth_method: method }), deps);
+      expect(res?.statusCode).toBe(201);
+      const body = JSON.parse(res?.body ?? '');
+      expect(body).toMatchObject({ token_endpoint_auth_method: 'none' });
+      expect(body).not.toHaveProperty('client_secret');
+      expect(body).not.toHaveProperty('client_secret_expires_at');
+      expect(Object.keys(body).sort()).toEqual([
+        'client_id', 'client_id_issued_at', 'client_name', 'grant_types', 'redirect_uris', 'response_types', 'token_endpoint_auth_method',
+      ]);
+    },
+  );
+
+  it('ignores and does not store extra RFC 7591 fields, including an unknown scope', async () => {
+    const extras = {
+      scope: 'bogus:scope', contacts: ['a@example.com'], client_uri: 'https://claude.ai', logo_uri: 'https://claude.ai/l.png',
+      tos_uri: 'https://claude.ai/tos', policy_uri: 'https://claude.ai/p', software_id: 'sw', software_version: '1',
+      jwks: { keys: [] }, jwks_uri: 'https://claude.ai/jwks', something_new: { nested: true },
+    };
+    const res = await handleOauthPublic(post({ ...valid, ...extras }), deps);
+    expect(res?.statusCode).toBe(201);
+    const body = JSON.parse(res?.body ?? '');
+    for (const name of Object.keys(extras)) expect(body).not.toHaveProperty(name);
+    const stored = await store.query('OAUTH#CLIENTS');
+    expect(JSON.stringify(stored)).not.toMatch(/bogus:scope|a@example.com|jwks|sw"/);
+  });
+
   it('accepts a body with only the required fields', async () => {
     const res = await handleOauthPublic(post({ redirect_uris: valid.redirect_uris }), deps);
     expect(res?.statusCode).toBe(201);
   });
 
   it.each([
-    { token_endpoint_auth_method: 'client_secret_basic' },
+    { token_endpoint_auth_method: 'private_key_jwt' },
+    { token_endpoint_auth_method: 42 },
     { grant_types: ['implicit'] },
     { response_types: ['token'] },
     { client_name: 42 },
@@ -90,8 +120,8 @@ describe('POST /api/oauth/register', () => {
     expect(res?.statusCode).toBe(413);
   });
 
-  it('answers 429 with Retry-After on the 11th registration from one address in an hour', async () => {
-    for (let i = 0; i < 10; i++) {
+  it('answers 429 with Retry-After on the 61st registration from one address in an hour', async () => {
+    for (let i = 0; i < 60; i++) {
       expect((await handleOauthPublic(post(valid), deps))?.statusCode).toBe(201);
     }
     const res = await handleOauthPublic(post(valid), deps);
@@ -100,7 +130,7 @@ describe('POST /api/oauth/register', () => {
   });
 
   it('counts invalid attempts too, and keeps addresses apart', async () => {
-    for (let i = 0; i < 10; i++) await handleOauthPublic(post(undefined, { raw: 'nope' }), deps);
+    for (let i = 0; i < 60; i++) await handleOauthPublic(post(undefined, { raw: 'nope' }), deps);
     expect((await handleOauthPublic(post(valid), deps))?.statusCode).toBe(429);
     expect((await handleOauthPublic(post(valid, { ip: '192.0.2.2' }), deps))?.statusCode).toBe(201);
   });

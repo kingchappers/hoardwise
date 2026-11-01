@@ -20,7 +20,7 @@ export interface OauthPublicDeps {
   limiter: FailureLimiter;
   // Counts every discovery request per address (60 a minute in the handler), apart from the registration limiter.
   discoveryLimiter: FailureLimiter;
-  // Failed token requests per address (30 per 10 minutes in the handler), and every revoke request per address.
+  // Failed token requests per address (30 per 10 minutes in the handler; refresh grants are exempt), and every revoke request per address.
   tokenLimiter: FailureLimiter;
   revokeLimiter: FailureLimiter;
   nowSeconds: number;
@@ -36,6 +36,9 @@ const TOKEN_RETRY_AFTER_SECONDS = '600';
 const RETRY_AFTER_SECONDS = '3600';
 const GRANT_TYPES = ['authorization_code', 'refresh_token'];
 const RESPONSE_TYPES = ['code'];
+// RFC 7591 lets the server replace a requested value. Every client is registered as a public client (PKCE, no secret), so a
+// client asking for a secret method is told "none" and the token endpoint ignores any secret it then sends.
+const REQUESTABLE_AUTH_METHODS = ['none', 'client_secret_post', 'client_secret_basic'];
 const NO_STORE = { ...SECURITY_HEADERS, 'Cache-Control': 'no-store' };
 
 const DISCOVERY: Record<string, (origin: string) => object> = {
@@ -62,8 +65,9 @@ function requestBody(event: APIGatewayProxyEventV2): string {
 
 function metadataProblem(input: Record<string, unknown>): string | undefined {
   if (input.client_name !== undefined && typeof input.client_name !== 'string') return 'client_name must be a string';
-  if (input.token_endpoint_auth_method !== undefined && input.token_endpoint_auth_method !== 'none') {
-    return 'Only token_endpoint_auth_method "none" is supported';
+  const method = input.token_endpoint_auth_method;
+  if (method !== undefined && (typeof method !== 'string' || !REQUESTABLE_AUTH_METHODS.includes(method))) {
+    return 'Unsupported token_endpoint_auth_method';
   }
   if (input.grant_types !== undefined && !isSubsetOf(input.grant_types, GRANT_TYPES)) return 'Unsupported grant_types';
   if (input.response_types !== undefined && !isSubsetOf(input.response_types, RESPONSE_TYPES)) return 'Unsupported response_types';
@@ -227,9 +231,13 @@ async function refreshTokens(store: Store, fields: Map<string, string>, nowSecon
 
 async function token(event: APIGatewayProxyEventV2, deps: OauthPublicDeps): Promise<ApiResponse> {
   const sourceIp = event.requestContext.http.sourceIp;
+  const parsed = parseForm(event);
+  // A refresh needs a 256-bit secret and costs one store read, so it is neither blocked nor counted: a shared address
+  // (a hosted client's backend) must not lock out other people's refreshes. The gateway throttle bounds them.
+  if ('fields' in parsed && parsed.fields.get('grant_type') === 'refresh_token') return tokenOutcome(parsed, deps);
   if (deps.tokenLimiter.isBlocked(sourceIp)) return tooManyTokenRequests();
 
-  const response = await tokenOutcome(event, deps);
+  const response = await tokenOutcome(parsed, deps);
   // Caller errors that reach nothing (wrong content type, oversize) are not guesses and are not counted.
   if (response.statusCode >= 400 && response.statusCode !== 413 && response.statusCode !== 415) {
     deps.tokenLimiter.recordFailure(sourceIp);
@@ -242,8 +250,7 @@ function tooManyTokenRequests(): ApiResponse {
   return oauthError(429, 'too_many_requests', 'Too many failed requests. Try again later.', { 'Retry-After': TOKEN_RETRY_AFTER_SECONDS });
 }
 
-async function tokenOutcome(event: APIGatewayProxyEventV2, deps: OauthPublicDeps): Promise<ApiResponse> {
-  const parsed = parseForm(event);
+async function tokenOutcome(parsed: FormResult, deps: OauthPublicDeps): Promise<ApiResponse> {
   if ('failure' in parsed) return parsed.failure;
   const grantType = parsed.fields.get('grant_type');
   if (!grantType) return oauthError(400, 'invalid_request', 'grant_type is required.');

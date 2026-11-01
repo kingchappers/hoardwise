@@ -78,9 +78,9 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
     const password = await (io.readPassword ?? promptHidden)('New password: ');
     const problem = validatePassword(password);
     if (problem) throw new Error(problem);
-    await replacePassword(store, password);
     await deleteAllSessions(store);
     await revokeAllTokens(store);
+    await replacePassword(store, password);
     await clearThrottle(store);
     return 'Password reset. All sessions and access tokens have ended and any login lock-out is cleared.';
   }

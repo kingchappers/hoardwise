@@ -124,7 +124,7 @@ The hand-written protocol layer in plan 1 (`src/mcp/protocol.ts` and the parsing
   - **Routes.** Discovery at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`; `POST /api/oauth/register`, `/token` and `/revoke` are public; `GET /api/oauth/client` and `POST /api/oauth/authorize` need a signed-in user. On AWS each public route is an explicit API Gateway route with its own throttle.
   - **Storage.** Clients, codes and refresh rows live under `OAUTH#` partitions in both Store implementations; the access token is an ordinary hashed token row.
   - **Lifetimes.** Access token 1 h, refresh token 90 days and rotating (reuse revokes the connection), authorization code 60 s and single use, unused client 24 h. A connection is one row in the tokens list with `kind: 'oauth'`.
-  - **Numbers.** 500 registered clients (oldest unused evicted), 10 registrations per address per hour, 30 token and 30 revoke attempts per address per 10 minutes, 8 KiB request bodies.
+  - **Numbers.** 500 registered clients (oldest unused evicted), 60 registrations per address per hour, 30 failed token requests per address per 10 minutes (refresh grants are exempt), 30 revoke requests per address per 10 minutes, 8 KiB request bodies.
   - **Consent.** The SPA route `/connect`, in both auth modes; local mode asks for the password again to grant write.
   - **Off by default.** Unset `APP_ORIGIN` answers 404 on every OAuth route.
 - Style cap and the exact rate limits and size caps for the tools themselves.

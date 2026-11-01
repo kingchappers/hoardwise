@@ -1,9 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { hashToken } from '../auth/localData';
 import { ConditionFailedError, type Store } from '../store';
-import { CODE_TTL_SECONDS, type OAuthScope, isLive } from './types';
-
-const CODES_PK = 'OAUTH#CODES';
+import { CODES_PK, CODE_TTL_SECONDS, type OAuthScope, isLive } from './types';
 
 export interface StoredCode {
   clientId: string;

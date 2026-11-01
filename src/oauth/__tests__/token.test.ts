@@ -60,7 +60,7 @@ beforeEach(async () => {
     getStore: async () => store,
     discoveryLimiter: createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 }),
     origin: 'https://hoard.example',
-    limiter: createFailureLimiter({ maxFailures: 10, windowSeconds: 3600, blockSeconds: 3600 }),
+    limiter: createFailureLimiter({ maxFailures: 60, windowSeconds: 3600, blockSeconds: 3600 }),
     tokenLimiter: createFailureLimiter({ maxFailures: 30, windowSeconds: 600, blockSeconds: 600 }),
     revokeLimiter: createFailureLimiter({ maxFailures: 30, windowSeconds: 600, blockSeconds: 600 }),
     nowSeconds: NOW + 5,
@@ -100,6 +100,21 @@ describe('POST /api/oauth/token, authorization_code', () => {
     expect(res?.statusCode).toBe(200);
     expect(res?.body).not.toContain('topsecret-value');
     expect(res?.body).not.toContain('assertion-value');
+  });
+
+  it('works for a public client when a client_secret and a Basic Authorization header are sent, and logs and echoes neither', async () => {
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
+    const event = call('token', form(exchange(await codeFor(), { client_secret: 'topsecret-value' })));
+    (event.headers as Record<string, string>).authorization = `Basic ${Buffer.from(`${clientId}:basic-secret-value`).toString('base64')}`;
+    const res = await handleOauthPublic(event, deps);
+    expect(res?.statusCode).toBe(200);
+    const logged = JSON.stringify(spies.flatMap((spy) => spy.mock.calls));
+    for (const secret of ['topsecret-value', 'basic-secret-value']) {
+      expect(res?.body).not.toContain(secret);
+      expect(JSON.stringify(res?.headers)).not.toContain(secret);
+      expect(logged).not.toContain(secret);
+    }
+    vi.restoreAllMocks();
   });
 
   it('answers every grant failure with the same invalid_grant body', async () => {
@@ -189,6 +204,26 @@ describe('POST /api/oauth/token, refresh_token', () => {
     const { body } = await token(exchange(await codeFor()));
     return { access: body.access_token, refresh: body.refresh_token };
   }
+
+  it('still succeeds from an address blocked for failed code exchanges', async () => {
+    const first = await connect();
+    const send = (fields: Record<string, string>) => handleOauthPublic(call('token', form(fields)), deps);
+    for (let i = 0; i < 30; i++) await send(exchange('bad'));
+    expect((await send(exchange('bad')))?.statusCode).toBe(429);
+    const res = await send({ grant_type: 'refresh_token', refresh_token: first.refresh, client_id: clientId });
+    expect(res?.statusCode).toBe(200);
+  });
+
+  it('does not count refresh failures, so they never block the address', async () => {
+    const first = await connect();
+    const send = (fields: Record<string, string>) => handleOauthPublic(call('token', form(fields)), deps);
+    for (let i = 0; i < 45; i++) {
+      expect((await send({ grant_type: 'refresh_token', refresh_token: 'nothing', client_id: 'nope' }))?.statusCode).toBe(401);
+    }
+    expect((await send(exchange('bad')))?.statusCode).toBe(400);
+    const res = await send({ grant_type: 'refresh_token', refresh_token: first.refresh, client_id: clientId });
+    expect(res?.statusCode).toBe(200);
+  });
 
   it('rotates to new tokens in the same shape', async () => {
     const first = await connect();

@@ -20,3 +20,6 @@ export const USED_CLIENT_TTL_SECONDS = 90 * 86400;
 export function isLive(item: Record<string, unknown>, nowSeconds: number): boolean {
   return typeof item.expiresAt === 'number' && item.expiresAt > nowSeconds;
 }
+
+export const CODES_PK = 'OAUTH#CODES';
+export const LOOPBACK_HOSTS = new Set(['127.0.0.1', '[::1]', 'localhost']);

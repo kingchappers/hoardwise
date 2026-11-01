@@ -2,11 +2,10 @@ import { randomBytes } from 'node:crypto';
 import type { Item, Store } from '../store';
 import {
   MAX_CLIENTS, MAX_CLIENT_NAME_LENGTH, MAX_REDIRECT_URIS, MAX_REDIRECT_URI_LENGTH, UNUSED_CLIENT_TTL_SECONDS,
-  USED_CLIENT_TTL_SECONDS, isLive,
+  LOOPBACK_HOSTS, USED_CLIENT_TTL_SECONDS, isLive,
 } from './types';
 
 const CLIENTS_PK = 'OAUTH#CLIENTS';
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', '[::1]', 'localhost']);
 
 export interface OAuthClient {
   clientId: string;

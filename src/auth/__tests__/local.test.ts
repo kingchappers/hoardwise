@@ -6,6 +6,7 @@ import { createAccount, createSession, readSession, recordFailure, throttleRemai
 import { createLocalProvider } from '../local';
 import { createToken, findToken, listTokens } from '../tokens';
 import { initAuth, setAuth } from '..';
+import { handler } from '../../../api-handler';
 
 let store: SqliteStore;
 const now = () => Math.floor(Date.now() / 1000);
@@ -62,6 +63,21 @@ describe('createLocalProvider', () => {
     const token = await createSession(store, 'local|u1', now());
     const result = await provider.authenticate(event({ method: 'DELETE', cookie: `__Host-hoardwise_session=${token}`, origin: 'https://evil.example.com' }));
     expect('rejection' in result && result.rejection.statusCode).toBe(403);
+  });
+
+  it('refuses a POST to the OAuth consent routes without an Origin header, at handler level', async () => {
+    setAuth(await createLocalProvider({}));
+    const token = await createSession(store, 'local|u1', now());
+    const send = (method: string, path: string) => handler({
+      rawPath: path,
+      headers: { host: 'budget.example.com' },
+      cookies: [`__Host-hoardwise_session=${token}`],
+      body: '{}',
+      requestContext: { routeKey: 'ANY /api/{proxy+}', http: { method, sourceIp: '198.51.100.9' } },
+    } as unknown as APIGatewayProxyEventV2, {} as never, () => {}) as Promise<{ statusCode: number }>;
+    expect((await send('POST', '/api/oauth/authorize')).statusCode).toBe(403);
+    // GET is a safe method, so the provider's Origin check does not apply to it; the session still does.
+    expect((await send('GET', '/api/oauth/client')).statusCode).not.toBe(403);
   });
 
   it('ignores a plain hoardwise_session cookie while cookies are Secure', async () => {

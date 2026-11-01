@@ -25,13 +25,13 @@ const INTERNAL_ERROR = JSON.stringify({ error: 'Internal server error' });
 // Exact in the container (one process); per instance on AWS, where API Gateway's throttling is the main limit.
 const tokenFailures = createFailureLimiter();
 
-// Unset or invalid APP_ORIGIN disables OAuth. Registrations: 10 per address per hour, exact in the container and per
+// Unset or invalid APP_ORIGIN disables OAuth. Registrations: 60 per address per hour, exact in the container and per
 // instance on AWS, where the route's own throttle backs it.
 const discoveryLimiter = createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 });
-// Token requests: 30 failures per address per 10 minutes. Revoke counts every request at the same rate.
+// Token requests: 30 failures per address per 10 minutes (refresh grants are exempt). Revoke counts every request at the same rate.
 const tokenLimiter = createFailureLimiter({ maxFailures: 30, windowSeconds: 600, blockSeconds: 600 });
 const revokeLimiter = createFailureLimiter({ maxFailures: 30, windowSeconds: 600, blockSeconds: 600 });
-const registrationLimiter = createFailureLimiter({ maxFailures: 10, windowSeconds: 3600, blockSeconds: 3600 });
+const registrationLimiter = createFailureLimiter({ maxFailures: 60, windowSeconds: 3600, blockSeconds: 3600 });
 
 function tooManyRequests(): ApiResponse {
   const response = err(429, 'Too many requests');

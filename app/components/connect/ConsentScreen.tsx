@@ -105,6 +105,7 @@ export function ConsentScreen(): React.JSX.Element {
         setFailure({ kind: 'message', text: FAILED });
         return;
       }
+      setPassword('');
       setConnected(true);
       navigateExternal(result.redirectTo);
     } catch (error) {
@@ -140,7 +141,8 @@ export function ConsentScreen(): React.JSX.Element {
     );
   }
 
-  const { name, redirectHost } = client.data;
+  const { redirectHost } = client.data;
+  const name = client.data.name.trim() === '' ? 'An app' : client.data.name;
 
   if (connected) {
     return (
@@ -173,7 +175,7 @@ export function ConsentScreen(): React.JSX.Element {
               ref={passwordField}
               label="Your password"
               description="Needed to let it change your data."
-              autoComplete="off"
+              autoComplete="current-password"
               value={password}
               error={passwordError}
               onChange={event => setPassword(event.currentTarget.value)}

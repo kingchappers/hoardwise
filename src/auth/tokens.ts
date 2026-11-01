@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { ConditionFailedError, type Item, type Store, type TxOp } from '../store';
-import { REFRESH_PK, REFRESH_USED_PK } from '../oauth/types';
+import { CODES_PK, REFRESH_PK, REFRESH_USED_PK } from '../oauth/types';
 import { hashToken } from './localData';
 
 export type TokenScope = 'read' | 'write';
@@ -156,6 +156,8 @@ async function deleteAll(store: Store, rows: Item[]): Promise<void> {
 // Used on password recovery. Refresh rows go first: a rotation needs its old refresh row to exist, so one racing the sweep fails
 // instead of recreating a connection, and anything it did slip in is caught by the next pass.
 export async function revokeAllTokens(store: Store): Promise<void> {
+  // A code issued just before recovery must not be exchangeable afterwards.
+  await deleteAll(store, await store.query(CODES_PK));
   for (let pass = 0; pass < MAX_SWEEP_PASSES; pass++) {
     const refresh = await store.query(REFRESH_PK);
     const used = await store.query(REFRESH_USED_PK);
@@ -174,4 +176,6 @@ export async function revokeAllTokens(store: Store): Promise<void> {
     ])).flat();
     if (remaining.length === 0) return;
   }
+  // Recovery must not finish with a credential still alive: failing here keeps it closed and logged.
+  throw new Error('Could not revoke every access token');
 }
