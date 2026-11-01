@@ -142,32 +142,91 @@ describe('revokeToken on a connection', () => {
   });
 });
 
-describe('revoke racing a rotation', () => {
-  class RacingStore extends MemoryStore {
-    onListingRead: (() => Promise<void>) | undefined;
-    override async get(key: { PK: string; SK: string }) {
-      const item = await super.get(key);
-      if (key.PK.startsWith('AUTH#TOKENLIST#') && this.onListingRead) {
-        const hook = this.onListingRead;
-        this.onListingRead = undefined;
-        await hook();
-      }
-      return item;
+class RacingStore extends MemoryStore {
+  beforeTransact: (() => Promise<void>) | undefined;
+  afterTransact: (() => Promise<void>) | undefined;
+  afterQuery: (() => Promise<void>) | undefined;
+  afterListingGet: (() => Promise<void>) | undefined;
+
+  override async get(key: Parameters<MemoryStore['get']>[0]) {
+    const item = await super.get(key);
+    const hook = key.PK.startsWith('AUTH#TOKENLIST#') ? this.afterListingGet : undefined;
+    if (hook) {
+      this.afterListingGet = undefined;
+      await hook();
     }
+    return item;
   }
 
-  it('keeps a connection revoked after the rotation read the listing dead', async () => {
+  override async transact(ops: Parameters<MemoryStore['transact']>[0]): Promise<void> {
+    const before = this.beforeTransact;
+    this.beforeTransact = undefined;
+    if (before) await before();
+    await super.transact(ops);
+    const after = this.afterTransact;
+    this.afterTransact = undefined;
+    if (after) await after();
+  }
+
+  override async query(pk: string, opts?: Parameters<MemoryStore['query']>[1]) {
+    const rows = await super.query(pk, opts);
+    const hook = this.afterQuery;
+    this.afterQuery = undefined;
+    if (hook) await hook();
+    return rows;
+  }
+}
+
+describe('revoke racing a rotation', () => {
+  it('keeps a connection dead when a rotation read the listing before revoke ran its first write and commits after it', async () => {
     const racing = new RacingStore();
     const conn = await createConnection(racing, input, NOW);
-    racing.onListingRead = async () => { await revokeToken(racing, 'u1', conn.tokenId); };
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let revoking: Promise<boolean> | undefined;
+    let firstWriteDone: () => void = () => undefined;
+    const firstWrite = new Promise<void>((resolve) => { firstWriteDone = resolve; });
 
-    const result = await rotateConnection(racing, conn.refreshToken, 'c1', NOW + 10);
-    expect(['invalid', 'reused']).toContain(result);
+    // The rotation has read the listing; revoke now runs its first write and pauses before its next call.
+    racing.afterListingGet = async () => {
+      racing.afterTransact = async () => { firstWriteDone(); await gate; };
+      revoking = revokeToken(racing, 'u1', conn.tokenId);
+      await firstWrite;
+    };
+    await rotateConnection(racing, conn.refreshToken, 'c1', NOW + 10);
+    release();
+    await revoking;
+
     expect(await findToken(racing, conn.accessToken, NOW + 11)).toBeUndefined();
     expect(await listTokens(racing, 'u1')).toHaveLength(0);
     expect(await racing.query('AUTH#TOKENS')).toHaveLength(0);
     expect(await racing.query('OAUTH#REFRESH')).toHaveLength(0);
     expect(await rotateConnection(racing, conn.refreshToken, 'c1', NOW + 12)).toMatch(/^(invalid|reused)$/);
+  });
+
+  it('revokes the new tokens when a rotation commits between revoke reading the listing and writing', async () => {
+    const racing = new RacingStore();
+    const conn = await createConnection(racing, input, NOW);
+    let next: Awaited<ReturnType<typeof rotateConnection>> | undefined;
+    racing.beforeTransact = async () => { next = await rotateConnection(racing, conn.refreshToken, 'c1', NOW + 10); };
+
+    expect(await revokeToken(racing, 'u1', conn.tokenId)).toBe(true);
+
+    if (typeof next !== 'object') throw new Error('the rotation should have won');
+    expect(await findToken(racing, conn.accessToken, NOW + 11)).toBeUndefined();
+    expect(await findToken(racing, next.accessToken, NOW + 11)).toBeUndefined();
+    expect(await rotateConnection(racing, next.refreshToken, 'c1', NOW + 12)).toMatch(/^(invalid|reused)$/);
+    expect(await racing.query('AUTH#TOKENS')).toHaveLength(0);
+    expect(await racing.query('OAUTH#REFRESH')).toHaveLength(0);
+    expect(await listTokens(racing, 'u1')).toHaveLength(0);
+  });
+
+  it('still revokes a connection whose refresh row was purged by its TTL', async () => {
+    const conn = await createConnection(store, input, NOW);
+    await store.delete({ PK: 'OAUTH#REFRESH', SK: hashToken(conn.refreshToken) });
+    expect(await revokeToken(store, 'u1', conn.tokenId)).toBe(true);
+    expect(await findToken(store, conn.accessToken, NOW + 1)).toBeUndefined();
+    expect(await listTokens(store, 'u1')).toHaveLength(0);
   });
 });
 
@@ -207,5 +266,34 @@ describe('revokeAllTokens with connections', () => {
     expect(await store.query('AUTH#TOKENS')).toHaveLength(0);
     expect(await listTokens(store, 'u1')).toHaveLength(0);
     expect(await listTokens(store, 'u2')).toHaveLength(0);
+  });
+});
+
+describe('revokeAllTokens robustness', () => {
+  it('leaves nothing usable when a rotation commits mid-sweep', async () => {
+    const racing = new RacingStore();
+    const conn = await createConnection(racing, input, NOW);
+    let next: Awaited<ReturnType<typeof rotateConnection>> | undefined;
+    racing.afterQuery = async () => { next = await rotateConnection(racing, conn.refreshToken, 'c1', NOW + 10); };
+
+    await revokeAllTokens(racing);
+
+    if (typeof next !== 'object') throw new Error('the rotation should have won');
+    expect(await findToken(racing, next.accessToken, NOW + 11)).toBeUndefined();
+    expect(await rotateConnection(racing, next.refreshToken, 'c1', NOW + 12)).toBe('invalid');
+    for (const pk of ['AUTH#TOKENS', 'OAUTH#REFRESH', 'OAUTH#REFRESH-USED', 'AUTH#TOKENLIST#u1']) {
+      expect(await racing.query(pk)).toHaveLength(0);
+    }
+  });
+
+  it('clears a user whose access-token lookups have already been purged', async () => {
+    const conn = await createConnection(store, input, NOW);
+    await store.delete({ PK: 'AUTH#TOKENS', SK: hashToken(conn.accessToken) });
+
+    await revokeAllTokens(store);
+
+    expect(await rotateConnection(store, conn.refreshToken, 'c1', NOW + 1)).toBe('invalid');
+    expect(await listTokens(store, 'u1')).toHaveLength(0);
+    expect(await store.query('OAUTH#REFRESH')).toHaveLength(0);
   });
 });
