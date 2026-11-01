@@ -116,7 +116,7 @@ describe('tokenAccessRejection', () => {
   });
 
   it.each(['read', 'write'] as const)('refuses the account paths for a %s token', (scope) => {
-    for (const path of ['/api/auth/me', '/api/tokens', '/api/tokens/abc', '/api/push/subscriptions']) {
+    for (const path of ['/api/auth/me', '/api/tokens', '/api/tokens/abc', '/api/push/subscriptions', '/api/oauth/authorize', '/api/oauth/client']) {
       const refusal = tokenAccessRejection(scope, 'GET', path);
       expect(refusal?.reason).toBe('account-route');
       expect(refusal?.rejection.statusCode).toBe(403);
@@ -125,7 +125,7 @@ describe('tokenAccessRejection', () => {
   });
 
   it.each(['read', 'write'] as const)('refuses bare /api/auth and /api/push for a %s token', (scope) => {
-    for (const path of ['/api/auth', '/api/push']) {
+    for (const path of ['/api/auth', '/api/push', '/api/oauth']) {
       const refusal = tokenAccessRejection(scope, 'GET', path);
       expect(refusal?.reason).toBe('account-route');
       expect(refusal?.rejection.statusCode).toBe(403);

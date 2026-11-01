@@ -25,6 +25,8 @@ const SOURCE_IP = '203.0.113.1';
 const BLOCKED_IP = '203.0.113.99';
 const UUID = '6f1d2c8e-3b4a-4c5d-8e9f-0a1b2c3d4e5f';
 const UNKNOWN_UUID = '00000000-0000-4000-8000-000000000000';
+const OAUTH_CLIENT_ID = 'EXAMPLE_CLIENT_ID';
+const OAUTH_REDIRECT = 'https://claude.ai/api/mcp/auth_callback';
 
 type Json = any;
 
@@ -288,6 +290,8 @@ const STEPS: Step[] = [
   { key: 'POST /api/tokens', example: 'write' },
   { key: 'GET /api/tokens' },
   { key: 'DELETE /api/tokens/{tokenId}', path: (ctx) => ({ tokenId: ctx.tokenId }) },
+  { key: 'GET /api/oauth/client' },
+  { key: 'POST /api/oauth/authorize', example: 'read' },
   { key: 'POST /api/categories/{categoryId}/reassign', example: 'example', path: (ctx) => ({ categoryId: ctx.customCategory }) },
   { key: 'DELETE /api/categories/{categoryId}', path: (ctx) => ({ categoryId: ctx.customCategory }) },
   { key: 'DELETE /api/targets/{categoryId}', path: () => ({ categoryId: 'cat-groceries' }) },
@@ -435,6 +439,9 @@ const ERROR_CASES: ErrorCase[] = [
       return { body: { name: 'One too many', scope: 'read', expiryDays: 90 } };
     },
   },
+  { key: 'GET /api/oauth/client 404', run: async () => ({ query: { client_id: 'unknown', redirect_uri: OAUTH_REDIRECT } }) },
+  { key: 'POST /api/oauth/authorize 400', run: async () => ({ body: { client_id: OAUTH_CLIENT_ID, redirect_uri: OAUTH_REDIRECT, scope: 'admin', code_challenge: 'x' } }) },
+  { key: 'POST /api/oauth/authorize 404', run: async () => ({ body: { client_id: 'unknown', redirect_uri: OAUTH_REDIRECT, scope: 'read', code_challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM' } }) },
   { key: 'DELETE /api/tokens/{tokenId} 404', run: async () => ({ path: { tokenId: UNKNOWN_UUID } }) },
 ];
 
@@ -446,10 +453,22 @@ function freshStore(): MemoryStore {
   return store;
 }
 
-beforeEach(() => {
+// The OAuth examples name this client, so the consent routes have one to find.
+async function seedOauthClient(target: Store): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  await target.put({
+    PK: 'OAUTH#CLIENTS', SK: OAUTH_CLIENT_ID, name: 'Claude', redirectUris: [OAUTH_REDIRECT], createdAt: now, expiresAt: now + 86400,
+  });
+}
+
+let savedOrigin: string | undefined;
+
+beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date(CLOCK));
-  freshStore();
+  savedOrigin = process.env.APP_ORIGIN;
+  process.env.APP_ORIGIN = 'https://hoard.example';
+  await seedOauthClient(freshStore());
   authenticate = vi.fn<(event: APIGatewayProxyEventV2) => Promise<AuthResult>>().mockResolvedValue({ userId: USER });
   setAuth({ mode: 'auth0', authenticate, handlePublic: async () => undefined });
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -458,6 +477,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  if (savedOrigin === undefined) delete process.env.APP_ORIGIN;
+  else process.env.APP_ORIGIN = savedOrigin;
   setAuth(undefined);
   setStore(undefined);
   vi.restoreAllMocks();

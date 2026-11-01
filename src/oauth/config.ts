@@ -18,3 +18,17 @@ export function oauthOrigin(env: NodeJS.ProcessEnv): string | undefined {
   console.warn('APP_ORIGIN is not a plain https origin (http only for loopback): OAuth sign-in is disabled');
   return undefined;
 }
+
+let resolvedFrom: string | undefined;
+let resolved: string | undefined;
+
+// Read at request time, not at import, so the container can set APP_ORIGIN (it may derive it from TLS_DOMAIN) first.
+// Re-resolved only when the variable changes, so an invalid value warns once.
+export function resolvePublicOrigin(): string | undefined {
+  const raw = process.env.APP_ORIGIN;
+  if (resolvedFrom !== raw) {
+    resolved = oauthOrigin(process.env);
+    resolvedFrom = raw;
+  }
+  return resolved;
+}

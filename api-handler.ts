@@ -12,7 +12,7 @@ import { touchToken } from './src/auth/tokens';
 import { createFailureLimiter } from './src/auth/failureLimiter';
 import { handleMcpRequest } from './src/mcp/handler';
 import { MCP_TOOLS } from './src/mcp/tools';
-import { oauthOrigin } from './src/oauth/config';
+import { resolvePublicOrigin } from './src/oauth/config';
 import { handleOauthPublic, isOauthPublicPath } from './src/oauth/routes';
 
 const router = createRouter();
@@ -28,18 +28,6 @@ const tokenFailures = createFailureLimiter();
 // Unset or invalid APP_ORIGIN disables OAuth. Registrations: 10 per address per hour, exact in the container and per
 // instance on AWS, where the route's own throttle backs it.
 const discoveryLimiter = createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 });
-let resolvedFrom: string | undefined;
-let publicOrigin: string | undefined;
-// Read at request time, not at import, so the container can set APP_ORIGIN (it may derive it from TLS_DOMAIN) first.
-// Re-resolved only when the variable changes, so an invalid value warns once.
-function resolvePublicOrigin(): string | undefined {
-  const raw = process.env.APP_ORIGIN;
-  if (resolvedFrom !== raw) {
-    publicOrigin = oauthOrigin(process.env);
-    resolvedFrom = raw;
-  }
-  return publicOrigin;
-}
 const registrationLimiter = createFailureLimiter({ maxFailures: 10, windowSeconds: 3600, blockSeconds: 3600 });
 
 function tooManyRequests(): ApiResponse {

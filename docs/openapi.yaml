@@ -86,6 +86,8 @@ tags:
     description: Web push reminder subscriptions. Not available to access tokens.
   - name: tokens
     description: Personal API token management. Not available to access tokens.
+  - name: oauth
+    description: The signed-in half of connecting an app such as Claude. Not available to access tokens.
   - name: docs
     description: This API's own documentation, for scripts and agents. A read token can fetch it.
 security:
@@ -2168,6 +2170,211 @@ paths:
                 error: Token not found
         '429':
           $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/oauth/client:
+    get:
+      tags: [oauth]
+      summary: Describe an OAuth client
+      description: >-
+        Used by the consent page to show who is asking to connect. Returns the client's name and where it will be sent
+        only when `client_id` exists and `redirect_uri` is, character for character, one of its registered redirect URIs.
+        Anything else, including OAuth being switched off, is a 404 with no detail. Not available to access tokens. The
+        response carries `Cache-Control: no-store`.
+      operationId: getOauthClient
+      x-token-access: none
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+          example: EXAMPLE_CLIENT_ID
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+          example: https://claude.ai/api/mcp/auth_callback
+      responses:
+        '200':
+          description: The client and the registered redirect.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [name, redirectHost, redirectUri]
+                properties:
+                  name:
+                    type: string
+                  redirectHost:
+                    type: string
+                  redirectUri:
+                    type: string
+              example:
+                name: Claude
+                redirectHost: claude.ai
+                redirectUri: https://claude.ai/api/mcp/auth_callback
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: >-
+            An access token was used (`Not available to access tokens`), or the request was refused for another reason
+            (see the shared `Forbidden` response).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Not available to access tokens
+        '404':
+          description: Unknown client, unregistered redirect URI, or OAuth is not configured (`Not found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Not found
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/oauth/authorize:
+    post:
+      tags: [oauth]
+      summary: Approve an OAuth connection
+      description: >-
+        Records the signed-in person's consent and returns the address to send them back to: the registered
+        `redirect_uri` with a one-time `code` (valid 60 seconds) and, if given, `state` added as query parameters. The
+        server never redirects itself and never returns a URI that was not registered. `redirect_uri` must equal a
+        registered URI exactly. `code_challenge` is the 43-character base64url S256 challenge (S256 is the only
+        method, so there is no method field). In local mode (the built-in login), the `write` scope also needs the account
+        `password`, checked and throttled exactly as for `POST /api/tokens`; Auth0 mode never asks for it. Not available
+        to access tokens. Unknown body fields are rejected. The response carries `Cache-Control: no-store`.
+      operationId: authorizeOauthClient
+      x-token-access: none
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [client_id, redirect_uri, scope, code_challenge]
+              properties:
+                client_id:
+                  type: string
+                redirect_uri:
+                  type: string
+                scope:
+                  type: string
+                  enum: [read, write]
+                code_challenge:
+                  type: string
+                  pattern: '^[A-Za-z0-9_-]{43}$'
+                state:
+                  type: string
+                  maxLength: 512
+                password:
+                  type: string
+                  maxLength: 128
+            examples:
+              read:
+                summary: Read access
+                value:
+                  client_id: EXAMPLE_CLIENT_ID
+                  redirect_uri: https://claude.ai/api/mcp/auth_callback
+                  scope: read
+                  code_challenge: E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
+                  state: abc123
+      responses:
+        '200':
+          description: Consent recorded.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [redirectTo]
+                properties:
+                  redirectTo:
+                    type: string
+              example:
+                redirectTo: https://claude.ai/api/mcp/auth_callback?code=EXAMPLE_CODE&state=abc123
+        '400':
+          description: >-
+            The body is not a JSON object (`Invalid JSON`) or breaks a rule: `Unexpected fields in the request`,
+            `client_id is required`, `redirect_uri is required`, `scope must be 'read' or 'write'`,
+            `code_challenge must be a 43-character base64url S256 challenge`, a `state` or `password` that is too long
+            or not a string.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: scope must be 'read' or 'write'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: >-
+            An access token was used (`Not available to access tokens`); or in local mode `write` was asked for without
+            the account password (`Password required`) or with the wrong one (`Incorrect password`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                token:
+                  summary: Called with an access token
+                  value:
+                    error: Not available to access tokens
+                missingPassword:
+                  summary: Local mode, write, no password
+                  value:
+                    error: Password required
+                wrongPassword:
+                  summary: Local mode, write, wrong password
+                  value:
+                    error: Incorrect password
+        '404':
+          description: Unknown client, unregistered redirect URI, or OAuth is not configured (`Not found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Not found
+        '429':
+          description: >-
+            Too many requests, or in local mode too many wrong passwords (`Too many attempts`, with `retryAfter` and
+            `Retry-After`).
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again.
+              schema:
+                type: integer
+                minimum: 1
+              example: 60
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Too many attempts
+                retryAfter: 60
         '500':
           $ref: '#/components/responses/InternalError'
   /api/openapi.json:

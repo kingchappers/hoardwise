@@ -20,6 +20,7 @@ const bodyOps: SpecOperation[] = operations(loadSpec()).filter((op) => (op.opera
 const keyOf = (op: SpecOperation): string => `${op.method} ${op.template}`;
 
 let store: MemoryStore;
+let savedOrigin: string | undefined;
 let ids: Record<string, string>;
 
 async function call(method: string, template: string, path: Record<string, string>, body: string | undefined): Promise<{ status: number; json: Json; text: string }> {
@@ -63,6 +64,8 @@ beforeEach(async () => {
   vi.setSystemTime(new Date(CLOCK));
   store = new MemoryStore();
   setStore(store);
+  savedOrigin = process.env.APP_ORIGIN;
+  process.env.APP_ORIGIN = 'https://hoard.example';
   setAuth({ mode: 'auth0', authenticate: vi.fn().mockResolvedValue({ userId: USER }), handlePublic: async () => undefined });
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -97,6 +100,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  if (savedOrigin === undefined) delete process.env.APP_ORIGIN;
+  else process.env.APP_ORIGIN = savedOrigin;
   setAuth(undefined);
   setStore(undefined);
   vi.restoreAllMocks();
