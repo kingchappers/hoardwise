@@ -5,9 +5,9 @@ import { err } from '../api/http';
 import type { ApiResponse } from '../api/types';
 import type { FailureLimiter } from '../auth/failureLimiter';
 import { hashToken } from '../auth/localData';
-import { LOOKUP_PK, TOKEN_PATTERN, listingPk, revokeToken } from '../auth/tokens';
-import type { Store } from '../store';
-import { ClientLimitError, InvalidRedirectError, getClient, registerClient } from './clients';
+import { LOOKUP_PK, TOKEN_PATTERN, TokenLimitError, listingPk, revokeToken } from '../auth/tokens';
+import { ConditionFailedError, type Store } from '../store';
+import { ClientLimitError, InvalidRedirectError, getClient, registerClient, touchClient } from './clients';
 import { consumeCode } from './codes';
 import { createConnection, rotateConnection } from './connections';
 import { REFRESH_PK, REFRESH_USED_PK } from './types';
@@ -174,6 +174,15 @@ function verifierMatches(verifier: string, challenge: string): boolean {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
+// A client in use must not expire: this extends it on every successful grant (one small write each time).
+async function keepClientAlive(store: Store, clientId: string, nowSeconds: number): Promise<void> {
+  try {
+    await touchClient(store, clientId, nowSeconds);
+  } catch (error) {
+    if (!(error instanceof ConditionFailedError)) throw error;
+  }
+}
+
 async function exchangeCode(store: Store, fields: Map<string, string>, nowSeconds: number): Promise<ApiResponse> {
   const code = fields.get('code');
   const redirectUri = fields.get('redirect_uri');
@@ -182,18 +191,25 @@ async function exchangeCode(store: Store, fields: Map<string, string>, nowSecond
   if (!code || !redirectUri || !clientId || !verifier) {
     return oauthError(400, 'invalid_request', 'code, redirect_uri, client_id and code_verifier are required.');
   }
+  // The code is spent before anything else is checked, so any attempt burns it, even one with an unknown client.
+  const stored = await consumeCode(store, code, nowSeconds);
   const client = await getClient(store, clientId, nowSeconds);
   if (!client) return INVALID_CLIENT();
-
-  // The code is spent before anything else is checked, so a wrong guess burns it.
-  const stored = await consumeCode(store, code, nowSeconds);
   if (!stored || stored.clientId !== clientId || stored.redirectUri !== redirectUri || !verifierMatches(verifier, stored.codeChallenge)) {
     return INVALID_GRANT();
   }
-  const connection = await createConnection(
-    store, { userId: stored.userId, clientId, clientName: client.name, scope: stored.scope }, nowSeconds,
-  );
-  return tokenResponse(connection, stored.scope);
+  try {
+    const connection = await createConnection(
+      store, { userId: stored.userId, clientId, clientName: client.name, scope: stored.scope }, nowSeconds,
+    );
+    await keepClientAlive(store, clientId, nowSeconds);
+    return tokenResponse(connection, stored.scope);
+  } catch (error) {
+    if (error instanceof TokenLimitError) {
+      return oauthError(400, 'invalid_grant', 'Too many connections or tokens. Remove one in Settings and connect again.');
+    }
+    throw error;
+  }
 }
 
 async function refreshTokens(store: Store, fields: Map<string, string>, nowSeconds: number): Promise<ApiResponse> {
@@ -204,6 +220,7 @@ async function refreshTokens(store: Store, fields: Map<string, string>, nowSecon
 
   const rotated = await rotateConnection(store, refreshToken, clientId, nowSeconds);
   if (rotated === 'invalid' || rotated === 'reused') return INVALID_GRANT();
+  await keepClientAlive(store, clientId, nowSeconds);
   return tokenResponse(rotated, rotated.scope);
 }
 
@@ -257,8 +274,8 @@ async function findConnection(store: Store, value: string): Promise<ConnectionRe
 
 async function revoke(event: APIGatewayProxyEventV2, deps: OauthPublicDeps): Promise<ApiResponse> {
   const sourceIp = event.requestContext.http.sourceIp;
-  deps.revokeLimiter.recordFailure(sourceIp);
   if (deps.revokeLimiter.isBlocked(sourceIp)) return tooManyTokenRequests();
+  deps.revokeLimiter.recordFailure(sourceIp);
 
   const parsed = parseForm(event);
   if ('failure' in parsed) return parsed.failure;

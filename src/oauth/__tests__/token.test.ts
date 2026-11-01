@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryStore } from '../../store/memory';
 import { createFailureLimiter } from '../../auth/failureLimiter';
 import { authenticateToken } from '../../auth/tokenAuth';
-import { createToken, findToken, listTokens } from '../../auth/tokens';
+import { MAX_TOKENS_PER_USER, createToken, findToken, listTokens } from '../../auth/tokens';
 import { registerClient } from '../clients';
 import { issueCode } from '../codes';
 import { rotateConnection } from '../connections';
@@ -153,6 +153,28 @@ describe('POST /api/oauth/token, authorization_code', () => {
     expect(body.error).toBe('invalid_client');
   });
 
+  it('burns the code even when the client is unknown', async () => {
+    const code = await codeFor();
+    const unknown = await token(exchange(code, { client_id: 'nope' }));
+    expect(unknown.res?.statusCode).toBe(401);
+    expect(unknown.body.error).toBe('invalid_client');
+    const retry = await token(exchange(code));
+    expect(retry.res?.statusCode).toBe(400);
+    expect(retry.body.error).toBe('invalid_grant');
+  });
+
+  it('answers 400 invalid_grant when the user is at the token limit, without a secret', async () => {
+    for (let i = 0; i < MAX_TOKENS_PER_USER; i++) {
+      await createToken(store, { userId: 'u1', name: `t${i}`, scope: 'read', expiryDays: 90 }, NOW);
+    }
+    const { res, body } = await token(exchange(await codeFor()));
+    expect(res?.statusCode).toBe(400);
+    expect(body).toEqual({
+      error: 'invalid_grant',
+      error_description: 'Too many connections or tokens. Remove one in Settings and connect again.',
+    });
+  });
+
   it.each(['code', 'redirect_uri', 'client_id', 'code_verifier'])('answers a missing %s with 400 invalid_request', async (field) => {
     const fields = exchange(await codeFor());
     delete fields[field];
@@ -218,6 +240,23 @@ describe('POST /api/oauth/token, refresh_token', () => {
     const { res, body } = await token(fields);
     expect(res?.statusCode).toBe(400);
     expect(body.error).toBe('invalid_request');
+  });
+});
+
+describe('client expiry', () => {
+  const DAY = 86400;
+  async function at(seconds: number, fields: Record<string, string>) {
+    const res = await handleOauthPublic(call('token', form(fields)), { ...deps, nowSeconds: seconds });
+    return { res, body: JSON.parse(res?.body ?? '{}') };
+  }
+
+  it('keeps a client alive while its connection is refreshed', async () => {
+    const exchanged = await at(NOW, exchange(await codeFor()));
+    expect(exchanged.res?.statusCode).toBe(200);
+    const second = await at(NOW + 89 * DAY, { grant_type: 'refresh_token', refresh_token: exchanged.body.refresh_token, client_id: clientId });
+    expect(second.res?.statusCode).toBe(200);
+    const third = await at(NOW + 100 * DAY, { grant_type: 'refresh_token', refresh_token: second.body.refresh_token, client_id: clientId });
+    expect(third.res?.statusCode).toBe(200);
   });
 });
 
@@ -360,6 +399,19 @@ describe('POST /api/oauth/revoke', () => {
     expect((await revoke({}))?.statusCode).toBe(400);
     expect((await handleOauthPublic(call('revoke', '{}', { contentType: 'application/json' }), deps))?.statusCode).toBe(415);
     expect((await handleOauthPublic(call('revoke', `token=${'a'.repeat(9000)}`), deps))?.statusCode).toBe(413);
+  });
+
+  it('does not extend a block while the address keeps calling', async () => {
+    let clock = 1000;
+    const revokeLimiter = createFailureLimiter({ maxFailures: 3, windowSeconds: 600, blockSeconds: 600 }, () => clock);
+    const d = { ...deps, revokeLimiter };
+    const send = () => handleOauthPublic(call('revoke', form({ token: 'x' })), d);
+    for (let i = 0; i < 4; i++) await send();
+    expect((await send())?.statusCode).toBe(429);
+    clock = 1500;
+    expect((await send())?.statusCode).toBe(429);
+    clock = 1000 + 600;
+    expect((await send())?.statusCode).toBe(200);
   });
 
   it('answers 429 after too many requests from one address', async () => {
