@@ -18,7 +18,7 @@ function event(method: string, rawPath: string, headers: Record<string, string> 
 }
 
 function deps(origin: string | undefined) {
-  return { store: new MemoryStore(), origin, limiter: createFailureLimiter(), nowSeconds: 1_800_000_000 };
+  return { getStore: async () => new MemoryStore(), discoveryLimiter: createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 }), origin, limiter: createFailureLimiter(), nowSeconds: 1_800_000_000 };
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -126,5 +126,32 @@ describe('discovery routes', () => {
   ])('answers %s %s with 404 when no origin is configured', async (method, path) => {
     const res = await handleOauthPublic(event(method, path), deps(undefined));
     expect(res?.statusCode).toBe(404);
+  });
+});
+
+describe('discovery rate limit', () => {
+  const PATH = '/.well-known/oauth-protected-resource';
+
+  it('answers 429 with Retry-After on the 61st request in a minute from one address', async () => {
+    const d = deps(ORIGIN);
+    for (let i = 0; i < 60; i++) expect((await handleOauthPublic(event('GET', PATH), d))?.statusCode).toBe(200);
+    const res = await handleOauthPublic(event('GET', PATH), d);
+    expect(res?.statusCode).toBe(429);
+    expect(res?.headers?.['Retry-After']).toBe('60');
+  });
+
+  it('leaves a normal caller, and other addresses, unaffected', async () => {
+    const d = deps(ORIGIN);
+    for (let i = 0; i < 61; i++) await handleOauthPublic(event('GET', PATH), d);
+    const other = event('GET', PATH);
+    (other.requestContext.http as { sourceIp: string }).sourceIp = '192.0.2.99';
+    expect((await handleOauthPublic(other, d))?.statusCode).toBe(200);
+  });
+
+  it('does not need the store', async () => {
+    const getStore = vi.fn().mockRejectedValue(new Error('down'));
+    const res = await handleOauthPublic(event('GET', PATH), { ...deps(ORIGIN), getStore });
+    expect(res?.statusCode).toBe(200);
+    expect(getStore).not.toHaveBeenCalled();
   });
 });

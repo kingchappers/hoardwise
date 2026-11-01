@@ -302,3 +302,49 @@ describe('store start-up', () => {
     expect(handlerCalls()).toEqual([]);
   });
 });
+
+describe('public OAuth routes (R2)', () => {
+  const PATHS: Array<[string, string]> = [
+    ['GET', '/.well-known/oauth-protected-resource'],
+    ['GET', '/.well-known/oauth-authorization-server'],
+    ['POST', '/api/oauth/register'],
+  ];
+
+  afterEach(() => {
+    delete process.env.APP_ORIGIN;
+  });
+
+  function bearerEvent(method: string, path: string): APIGatewayProxyEventV2 {
+    const event = makeEvent({ method, path, authorization: 'Bearer hwr_not_a_real_token' });
+    return { ...event, body: JSON.stringify({ redirect_uris: ['https://claude.ai/cb'] }) } as APIGatewayProxyEventV2;
+  }
+
+  it.each(PATHS)('answers %s %s without touching the auth provider, even with a Bearer hwr_ header', async (method, path) => {
+    process.env.APP_ORIGIN = 'https://hoard.example';
+    mockInitStore.mockRejectedValue(new Error('store must not be needed for discovery'));
+    const res = await invoke(bearerEvent(method, path));
+    expect(res.statusCode).not.toBe(401);
+    // Registration needs the store, which is made to fail here; the point is that auth is never consulted.
+    if (method === 'GET') expect(res.statusCode).toBe(200);
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockGetSigningKey).not.toHaveBeenCalled();
+    expect(handlerCalls()).toEqual([]);
+  });
+
+  it.each(PATHS)('answers %s %s with 404 and touches neither auth nor the store when no origin is set', async (method, path) => {
+    delete process.env.APP_ORIGIN;
+    const res = await invoke(bearerEvent(method, path));
+    expect(res.statusCode).toBe(404);
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockGetSigningKey).not.toHaveBeenCalled();
+    expect(mockInitStore).not.toHaveBeenCalled();
+  });
+
+  it('serves discovery with 200 when the store throws on init', async () => {
+    process.env.APP_ORIGIN = 'https://hoard.example';
+    mockInitStore.mockRejectedValue(new Error('down'));
+    const res = await invoke(makeEvent({ path: '/.well-known/oauth-protected-resource', authorization: null }));
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).resource).toBe('https://hoard.example/mcp');
+  });
+});

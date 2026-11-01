@@ -31,7 +31,7 @@ const valid = {
 
 beforeEach(() => {
   store = new MemoryStore();
-  deps = { store, origin: 'https://hoard.example', limiter: createFailureLimiter({ maxFailures: 10, windowSeconds: 3600, blockSeconds: 3600 }), nowSeconds: NOW };
+  deps = { getStore: async () => store, discoveryLimiter: createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 }), origin: 'https://hoard.example', limiter: createFailureLimiter({ maxFailures: 10, windowSeconds: 3600, blockSeconds: 3600 }), nowSeconds: NOW };
 });
 
 describe('POST /api/oauth/register', () => {
@@ -107,7 +107,7 @@ describe('POST /api/oauth/register', () => {
 
   it('answers 503 at the client cap without detail', async () => {
     for (let i = 0; i < MAX_CLIENTS; i++) {
-      await store.put({ PK: 'OAUTH#CLIENTS', SK: `c${i}`, name: 'x', redirectUris: [], createdAt: NOW, expiresAt: NOW + 1000 });
+      await store.put({ PK: 'OAUTH#CLIENTS', SK: `c${i}`, name: 'x', redirectUris: [], createdAt: NOW, usedAt: NOW, expiresAt: NOW + 1000 });
     }
     const res = await handleOauthPublic(post(valid), deps);
     expect(res?.statusCode).toBe(503);

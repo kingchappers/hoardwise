@@ -101,3 +101,16 @@ variable "oauth_register_throttle_burst_limit" {
   description = "Burst of requests allowed on client registration, across all callers."
   default     = 5
 }
+
+# The gateway throttle on each OAuth discovery document, shared by everyone. The per-address limit is in the handler.
+variable "oauth_discovery_throttle_rate_limit" {
+  type        = number
+  description = "Steady requests per second allowed on each OAuth discovery document, across all callers."
+  default     = 5
+}
+
+variable "oauth_discovery_throttle_burst_limit" {
+  type        = number
+  description = "Burst of requests allowed on each OAuth discovery document, across all callers."
+  default     = 10
+}

@@ -47,6 +47,18 @@ function checkRedirectUri(uri: unknown): string {
   return uri;
 }
 
+// Anonymous registrations must not be able to lock real people out: at the cap the oldest client that no
+// authorization ever completed makes room. Only when every client is in use is the registration refused.
+async function evictOldestUnused(store: Store, live: Item[]): Promise<void> {
+  let oldest: Item | undefined;
+  for (const item of live) {
+    if (item.usedAt !== undefined) continue;
+    if (!oldest || Number(item.createdAt) < Number(oldest.createdAt)) oldest = item;
+  }
+  if (!oldest) throw new ClientLimitError();
+  await store.delete({ PK: CLIENTS_PK, SK: String(oldest.SK) });
+}
+
 function toClient(item: Item): OAuthClient {
   return {
     clientId: String(item.SK),
@@ -66,8 +78,8 @@ export async function registerClient(
   }
   const redirectUris = input.redirectUris.map(checkRedirectUri);
 
-  const live = (await store.query(CLIENTS_PK, { attributes: ['expiresAt'] })).filter((item) => isLive(item, nowSeconds));
-  if (live.length >= MAX_CLIENTS) throw new ClientLimitError();
+  const live = (await store.query(CLIENTS_PK, { attributes: ['SK', 'expiresAt', 'createdAt', 'usedAt'] })).filter((item) => isLive(item, nowSeconds));
+  if (live.length >= MAX_CLIENTS) await evictOldestUnused(store, live);
 
   const client: OAuthClient = {
     clientId: randomBytes(16).toString('base64url'),
@@ -94,5 +106,5 @@ export async function getClient(store: Store, clientId: string, nowSeconds: numb
 
 export async function touchClient(store: Store, clientId: string, nowSeconds: number): Promise<void> {
   if (!(await getClient(store, clientId, nowSeconds))) return;
-  await store.patch({ PK: CLIENTS_PK, SK: clientId }, { expiresAt: nowSeconds + USED_CLIENT_TTL_SECONDS }, { mustExist: true });
+  await store.patch({ PK: CLIENTS_PK, SK: clientId }, { expiresAt: nowSeconds + USED_CLIENT_TTL_SECONDS, usedAt: nowSeconds }, { mustExist: true });
 }

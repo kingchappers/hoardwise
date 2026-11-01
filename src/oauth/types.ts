@@ -13,7 +13,7 @@ export const MAX_CLIENTS = 500;
 export const MAX_REDIRECT_URIS = 5;
 export const MAX_REDIRECT_URI_LENGTH = 2000;
 export const MAX_CLIENT_NAME_LENGTH = 60;
-export const UNUSED_CLIENT_TTL_SECONDS = 7 * 86400;
+export const UNUSED_CLIENT_TTL_SECONDS = 86400;
 export const USED_CLIENT_TTL_SECONDS = 90 * 86400;
 
 // Rows carry expiresAt, the table's TTL attribute. The purge is hourly, so a read must also check it.

@@ -8,9 +8,12 @@ import { ClientLimitError, InvalidRedirectError, registerClient } from './client
 import { authorizationServerMetadata, protectedResourceMetadata } from './metadata';
 
 export interface OauthPublicDeps {
-  store: Store;
+  // Only registration needs the store, so it is opened lazily: discovery never depends on it.
+  getStore: () => Promise<Store>;
   origin: string | undefined;
   limiter: FailureLimiter;
+  // Counts every discovery request per address (60 a minute in the handler), apart from the registration limiter.
+  discoveryLimiter: FailureLimiter;
   nowSeconds: number;
 }
 
@@ -80,7 +83,7 @@ async function register(event: APIGatewayProxyEventV2, deps: OauthPublicDeps): P
 
   try {
     const client = await registerClient(
-      deps.store,
+      await deps.getStore(),
       { name: (fields.client_name as string | undefined) ?? '', redirectUris: fields.redirect_uris as string[] },
       deps.nowSeconds,
     );
@@ -121,6 +124,11 @@ export async function handleOauthPublic(event: APIGatewayProxyEventV2, deps: Oau
   const method = event.requestContext.http.method;
   if (document) {
     if (method !== 'GET') return methodNotAllowed('GET');
+    const sourceIp = event.requestContext.http.sourceIp;
+    deps.discoveryLimiter.recordFailure(sourceIp);
+    if (deps.discoveryLimiter.isBlocked(sourceIp)) {
+      return oauthError(429, 'too_many_requests', 'Too many requests. Try again later.', { 'Retry-After': '60' });
+    }
     return {
       statusCode: 200,
       headers: { ...SECURITY_HEADERS, 'Cache-Control': 'public, max-age=3600' },

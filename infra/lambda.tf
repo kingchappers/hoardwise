@@ -123,6 +123,19 @@ resource "aws_apigatewayv2_stage" "default" {
     throttling_burst_limit = var.oauth_register_throttle_burst_limit
   }
 
+  # Public discovery documents: a shared throttle each (INFRA-01, AUTH-19).
+  route_settings {
+    route_key              = aws_apigatewayv2_route.oauth_protected_resource.route_key
+    throttling_rate_limit  = var.oauth_discovery_throttle_rate_limit
+    throttling_burst_limit = var.oauth_discovery_throttle_burst_limit
+  }
+
+  route_settings {
+    route_key              = aws_apigatewayv2_route.oauth_authorization_server.route_key
+    throttling_rate_limit  = var.oauth_discovery_throttle_rate_limit
+    throttling_burst_limit = var.oauth_discovery_throttle_burst_limit
+  }
+
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_logs.arn
     format = jsonencode({

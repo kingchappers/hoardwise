@@ -27,13 +27,16 @@ const tokenFailures = createFailureLimiter();
 
 // Unset or invalid APP_ORIGIN disables OAuth. Registrations: 10 per address per hour, exact in the container and per
 // instance on AWS, where the route's own throttle backs it.
-let publicOriginResolved = false;
+const discoveryLimiter = createFailureLimiter({ maxFailures: 60, windowSeconds: 60, blockSeconds: 60 });
+let resolvedFrom: string | undefined;
 let publicOrigin: string | undefined;
-// Read on the first request, not at import, so the container can set APP_ORIGIN (it may derive it from TLS_DOMAIN) first.
+// Read at request time, not at import, so the container can set APP_ORIGIN (it may derive it from TLS_DOMAIN) first.
+// Re-resolved only when the variable changes, so an invalid value warns once.
 function resolvePublicOrigin(): string | undefined {
-  if (!publicOriginResolved) {
+  const raw = process.env.APP_ORIGIN;
+  if (resolvedFrom !== raw) {
     publicOrigin = oauthOrigin(process.env);
-    publicOriginResolved = true;
+    resolvedFrom = raw;
   }
   return publicOrigin;
 }
@@ -91,9 +94,10 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     // Public OAuth routes: never through the auth provider, a session or a JWT.
     if (isOauthPublicPath(event.rawPath)) {
       const oauthResponse = await handleOauthPublic(event, {
-        store: await initStore(),
+        getStore: initStore,
         origin: resolvePublicOrigin(),
         limiter: registrationLimiter,
+        discoveryLimiter,
         nowSeconds: Math.floor(Date.now() / 1000),
       });
       if (oauthResponse) return oauthResponse;

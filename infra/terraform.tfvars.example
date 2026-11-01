@@ -16,4 +16,4 @@ auth0_audience = "https://your-api-identifier"
 # vapid_public_key = "the public half of your VAPID key pair"
 
 # Public origin of the app, which OAuth sign-in for assistants advertises (no path). Empty or unset disables it.
-app_origin = "https://hoardwise.example.com"
+# app_origin = "https://hoardwise.example.com"

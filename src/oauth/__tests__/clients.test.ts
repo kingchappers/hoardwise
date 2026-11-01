@@ -38,11 +38,33 @@ describe('registerClient', () => {
     await expect(registerClient(store, { name: 'x', redirectUris: six }, NOW)).rejects.toBeInstanceOf(InvalidRedirectError);
   });
 
-  it('throws ClientLimitError on the 501st registration', async () => {
+  async function fill(): Promise<string[]> {
+    const ids: string[] = [];
     for (let i = 0; i < MAX_CLIENTS; i++) {
-      await registerClient(store, { name: `c${i}`, redirectUris: ['https://claude.ai/cb'] }, NOW);
+      ids.push((await registerClient(store, { name: `c${i}`, redirectUris: ['https://claude.ai/cb'] }, NOW + i)).clientId);
     }
-    await expect(registerClient(store, { name: 'one more', redirectUris: ['https://claude.ai/cb'] }, NOW))
+    return ids;
+  }
+
+  it('evicts the oldest unused client for the 501st registration', async () => {
+    const ids = await fill();
+    const added = await registerClient(store, { name: 'one more', redirectUris: ['https://claude.ai/cb'] }, NOW + MAX_CLIENTS);
+    expect(await getClient(store, ids[0], NOW + MAX_CLIENTS)).toBeUndefined();
+    expect(await getClient(store, ids[1], NOW + MAX_CLIENTS)).toBeDefined();
+    expect(await getClient(store, added.clientId, NOW + MAX_CLIENTS)).toBeDefined();
+  });
+
+  it('never evicts a client that has been used', async () => {
+    const ids = await fill();
+    await touchClient(store, ids[0], NOW + MAX_CLIENTS);
+    await registerClient(store, { name: 'one more', redirectUris: ['https://claude.ai/cb'] }, NOW + MAX_CLIENTS);
+    expect(await getClient(store, ids[0], NOW + MAX_CLIENTS)).toBeDefined();
+    expect(await getClient(store, ids[1], NOW + MAX_CLIENTS)).toBeUndefined();
+  });
+
+  it('throws ClientLimitError at the cap when every client is in use', async () => {
+    for (const id of await fill()) await touchClient(store, id, NOW + MAX_CLIENTS);
+    await expect(registerClient(store, { name: 'one more', redirectUris: ['https://claude.ai/cb'] }, NOW + MAX_CLIENTS))
       .rejects.toBeInstanceOf(ClientLimitError);
   });
 
@@ -50,7 +72,7 @@ describe('registerClient', () => {
     for (let i = 0; i < MAX_CLIENTS; i++) {
       await registerClient(store, { name: `c${i}`, redirectUris: ['https://claude.ai/cb'] }, NOW);
     }
-    await expect(registerClient(store, { name: 'later', redirectUris: ['https://claude.ai/cb'] }, NOW + 8 * DAY)).resolves.toBeDefined();
+    await expect(registerClient(store, { name: 'later', redirectUris: ['https://claude.ai/cb'] }, NOW + 2 * DAY)).resolves.toBeDefined();
   });
 
   it('trims and truncates the name to 60 characters', async () => {
@@ -60,17 +82,17 @@ describe('registerClient', () => {
 });
 
 describe('getClient and touchClient', () => {
-  it('reads an unused client as absent after 7 days but present at 6', async () => {
+  it('reads an unused client as absent after 24 hours but present just before', async () => {
     const { clientId } = await registerClient(store, { name: 'x', redirectUris: ['https://claude.ai/cb'] }, NOW);
-    expect(await getClient(store, clientId, NOW + 6 * DAY)).toBeDefined();
-    expect(await getClient(store, clientId, NOW + 7 * DAY)).toBeUndefined();
+    expect(await getClient(store, clientId, NOW + DAY - 1)).toBeDefined();
+    expect(await getClient(store, clientId, NOW + DAY)).toBeUndefined();
   });
 
   it('keeps a used client for 90 days', async () => {
     const { clientId } = await registerClient(store, { name: 'x', redirectUris: ['https://claude.ai/cb'] }, NOW);
-    await touchClient(store, clientId, NOW + 6 * DAY);
+    await touchClient(store, clientId, NOW + DAY - 1);
     expect(await getClient(store, clientId, NOW + 60 * DAY)).toBeDefined();
-    expect(await getClient(store, clientId, NOW + 6 * DAY + 90 * DAY)).toBeUndefined();
+    expect(await getClient(store, clientId, NOW + DAY - 1 + 90 * DAY)).toBeUndefined();
   });
 
   it('returns undefined for an unknown client and touch does not create one', async () => {
