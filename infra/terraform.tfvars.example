@@ -14,3 +14,6 @@ auth0_audience = "https://your-api-identifier"
 # Bill reminders (optional). Not read from this file in CI, where it comes from the
 # VAPID_PUBLIC_KEY secret; only needed for a local `tofu plan`/`apply`.
 # vapid_public_key = "the public half of your VAPID key pair"
+
+# Public origin of the app, which OAuth sign-in for assistants advertises (no path). Empty or unset disables it.
+app_origin = "https://hoardwise.example.com"

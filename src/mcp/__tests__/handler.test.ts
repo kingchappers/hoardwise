@@ -92,3 +92,28 @@ describe('SDK replies that carry nothing for the client', () => {
     expect(res.body).toBe('');
   });
 });
+
+describe('the 401 discovery hint', () => {
+  async function unauthorized(oauthOrigin: string | undefined): Promise<ApiResponse> {
+    return handleMcpRequest(makeEvent({ authorization: 'Bearer hw_not_a_token' }), [], {
+      store,
+      now: new Date(),
+      tokenFailures: createFailureLimiter(),
+      oauthOrigin,
+    });
+  }
+
+  it('points to the protected resource metadata when an origin is configured', async () => {
+    const res = await unauthorized('https://hoard.example');
+    expect(res.statusCode).toBe(401);
+    expect(res.headers?.['WWW-Authenticate']).toBe('Bearer resource_metadata="https://hoard.example/.well-known/oauth-protected-resource"');
+  });
+
+  it('sends no hint without an origin, and the body is the same either way', async () => {
+    const without = await unauthorized(undefined);
+    const withOrigin = await unauthorized('https://hoard.example');
+    expect(without.statusCode).toBe(401);
+    expect(without.headers).not.toHaveProperty('WWW-Authenticate');
+    expect(without.body).toBe(withOrigin.body);
+  });
+});

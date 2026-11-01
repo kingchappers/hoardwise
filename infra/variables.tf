@@ -81,3 +81,23 @@ variable "mcp_throttle_burst_limit" {
   description = "Burst of requests allowed on /mcp, across all users."
   default     = 10
 }
+
+# The public origin OAuth advertises (INFRA-01, AUTH-19). Empty disables OAuth: its routes answer 404.
+variable "app_origin" {
+  type        = string
+  description = "Public origin of the app, such as https://hoardwise.example.com (no path). Empty disables OAuth sign-in for assistants."
+  default     = ""
+}
+
+# The gateway throttle on POST /api/oauth/register, shared by everyone. The per-address limit is in the handler.
+variable "oauth_register_throttle_rate_limit" {
+  type        = number
+  description = "Steady requests per second allowed on client registration, across all callers."
+  default     = 1
+}
+
+variable "oauth_register_throttle_burst_limit" {
+  type        = number
+  description = "Burst of requests allowed on client registration, across all callers."
+  default     = 5
+}

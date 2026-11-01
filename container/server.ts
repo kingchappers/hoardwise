@@ -90,6 +90,8 @@ export async function startServer(env: NodeJS.ProcessEnv, options: StartOptions 
     COOKIE_SECURE: String(config.secureCookie),
     APP_ORIGIN: config.appOrigin ?? '',
   };
+  // The API handler reads the public origin from the process environment on its first request.
+  if (config.appOrigin) process.env.APP_ORIGIN = config.appOrigin;
   const opened = await initStore(runtimeEnv);
 
   let maintenance: { stop(): void } | undefined;

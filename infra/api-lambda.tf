@@ -53,6 +53,7 @@ resource "aws_lambda_function" "api" {
       AUTH0_DOMAIN   = var.auth0_domain
       AUTH0_AUDIENCE = var.auth0_audience
       DYNAMODB_TABLE = aws_dynamodb_table.budget_data.name
+      APP_ORIGIN     = var.app_origin
     }
   }
 
@@ -113,6 +114,26 @@ resource "aws_apigatewayv2_route" "api_put" {
 resource "aws_apigatewayv2_route" "mcp" {
   api_id    = aws_apigatewayv2_api.app.id
   route_key = "ANY /mcp"
+  target    = "integrations/${aws_apigatewayv2_integration.api_lambda.id}"
+}
+
+# OAuth discovery and client registration. These are public: the handler serves them ahead of any
+# authentication, and answers 404 when app_origin is empty. Registration has its own throttle on the stage.
+resource "aws_apigatewayv2_route" "oauth_protected_resource" {
+  api_id    = aws_apigatewayv2_api.app.id
+  route_key = "GET /.well-known/oauth-protected-resource"
+  target    = "integrations/${aws_apigatewayv2_integration.api_lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "oauth_authorization_server" {
+  api_id    = aws_apigatewayv2_api.app.id
+  route_key = "GET /.well-known/oauth-authorization-server"
+  target    = "integrations/${aws_apigatewayv2_integration.api_lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "oauth_register" {
+  api_id    = aws_apigatewayv2_api.app.id
+  route_key = "POST /api/oauth/register"
   target    = "integrations/${aws_apigatewayv2_integration.api_lambda.id}"
 }
 

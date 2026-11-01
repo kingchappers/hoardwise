@@ -112,6 +112,8 @@ export function writeResult(res: ServerResponse, result: HandlerResult, extraHea
   res.end(body);
 }
 
+const OAUTH_DISCOVERY_PATHS = new Set(['/.well-known/oauth-protected-resource', '/.well-known/oauth-authorization-server']);
+
 const LINGER_MS = 2000;
 
 function hasBody(req: IncomingMessage): boolean {
@@ -203,7 +205,7 @@ export function createRequestListener(deps: AdapterDeps): (req: IncomingMessage,
       return;
     }
 
-    if (pathname.startsWith('/api/') || routed === '/mcp') {
+    if (pathname.startsWith('/api/') || routed === '/mcp' || OAUTH_DISCOVERY_PATHS.has(routed)) {
       let body = '';
       if (!readOnly) {
         try {
