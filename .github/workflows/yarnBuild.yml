@@ -24,6 +24,8 @@ jobs:
       TF_VAR_environment: production
       # The public half of the reminder key pair. Empty until the secret is created, and the feature stays off.
       TF_VAR_vapid_public_key: ${{ secrets.VAPID_PUBLIC_KEY }}
+      # The site's public origin, from the repository variable APP_ORIGIN. Empty until set, and OAuth sign-in stays off.
+      TF_VAR_app_origin: ${{ vars.APP_ORIGIN }}
     name: Build Package
     runs-on: ubuntu-latest
     services:

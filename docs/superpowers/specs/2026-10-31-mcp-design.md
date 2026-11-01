@@ -119,12 +119,16 @@ The hand-written protocol layer in plan 1 (`src/mcp/protocol.ts` and the parsing
 ## Left to the builder
 
 - Exact tool names, inputs and outputs (about six to eight task-shaped tools, HOA-10), and what summary data the graphics guidance returns.
-- Which part of the OAuth specs to target (the MCP SDK decision is settled; see "The official MCP SDK" below).
-- Where OAuth routes live and how they are routed on AWS; table and key design for codes, clients and styles in each Store implementation.
-- Token lifetime and refresh behaviour for OAuth-issued access, and how they appear in the existing tokens list.
-- The exact numbers: rate limits, size caps, style cap, registration cap.
-- How the consent page is built, within `docs/brand.md`, in both Auth0 and local login modes.
-- Test strategy, including a conformance check against a real MCP client or the MCP inspector, and OpenAPI/SECURITY.md updates.
+- Settled by plan 2 (OAuth, HOA-15, with the Settings page HOA-13):
+  - **Specs targeted.** Authorization code flow with PKCE `S256` for public clients only, dynamic client registration (RFC 7591) and the two discovery documents (RFC 9728 protected resource, RFC 8414 authorization server), plus RFC 7009 revocation. No client ID metadata documents (CIMD) yet: that needs the server to fetch a URL the client supplies, which is a server-side request forgery risk to design separately.
+  - **Routes.** Discovery at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`; `POST /api/oauth/register`, `/token` and `/revoke` are public; `GET /api/oauth/client` and `POST /api/oauth/authorize` need a signed-in user. On AWS each public route is an explicit API Gateway route with its own throttle.
+  - **Storage.** Clients, codes and refresh rows live under `OAUTH#` partitions in both Store implementations; the access token is an ordinary hashed token row.
+  - **Lifetimes.** Access token 1 h, refresh token 90 days and rotating (reuse revokes the connection), authorization code 60 s and single use, unused client 24 h. A connection is one row in the tokens list with `kind: 'oauth'`.
+  - **Numbers.** 500 registered clients (oldest unused evicted), 10 registrations per address per hour, 30 token and 30 revoke attempts per address per 10 minutes, 8 KiB request bodies.
+  - **Consent.** The SPA route `/connect`, in both auth modes; local mode asks for the password again to grant write.
+  - **Off by default.** Unset `APP_ORIGIN` answers 404 on every OAuth route.
+- Style cap and the exact rate limits and size caps for the tools themselves.
+- Test strategy, including a conformance check against a real MCP client or the MCP inspector.
 
 ## Related
 
