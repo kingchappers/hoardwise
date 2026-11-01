@@ -127,7 +127,13 @@ The hand-written protocol layer in plan 1 (`src/mcp/protocol.ts` and the parsing
   - **Numbers.** 500 registered clients (oldest unused evicted), 60 registrations per address per hour, 30 failed token requests per address per 10 minutes (refresh grants are exempt), 30 revoke requests per address per 10 minutes, 8 KiB request bodies.
   - **Consent.** The SPA route `/connect`, in both auth modes; local mode asks for the password again to grant write.
   - **Off by default.** Unset `APP_ORIGIN` answers 404 on every OAuth route.
-- Style cap and the exact rate limits and size caps for the tools themselves.
+- Settled by plan 3 (write tools and styles, HOA-12):
+  - **Tool names.** `list_styles`, `save_style` and `delete_style` (access `styles`: open to read tokens and "view only" connections, limited to the person's own style records), `list_categories` (read), and `log_spend` and `log_income` (access `budget`: write tokens and "view and change" connections only). `display_guidance` now also returns the person's default style.
+  - **Style caps.** Name at most 40 characters, description at most 200 (what every read returns), plain text only (no control or direction-changing characters, markup, links or web addresses), at most 20 per person, names unique ignoring case (a per-name key row makes that atomic). The default is one marker row per person.
+  - **No separate preview tool.** As decided above, the write tools are annotated as changes and tell the assistant to read the entry back and wait for a clear yes; idempotency by `transactionId` covers retries.
+  - **Category only.** Transactions have no account, so the assistant chooses only a category (from `list_categories`): an expense or pot category for a spend, an income category for an income; archived categories are refused.
+  - **Date window.** From 730 days back to tomorrow (UTC); the description is at most 200 characters and the amount a positive whole number of pence up to the app's maximum.
+  - **Write limit.** 30 attempts per person per 10 minutes, counted per server instance (each Lambda instance separately on AWS), on top of the per-request limiter. Known limits are recorded under AUTH-21 in `SECURITY.md`.
 - Test strategy, including a conformance check against a real MCP client or the MCP inspector.
 
 ## Related

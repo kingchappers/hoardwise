@@ -24,6 +24,14 @@ describe('get', () => {
     expect(item).toEqual({ PK, SK: 'CAT#a', name: 'Food' });
   });
 
+  it('asks for a consistent read only when told to', async () => {
+    send.mockResolvedValue({});
+    await store.get({ PK, SK: 'CAT#a' });
+    await store.get({ PK, SK: 'CAT#a' }, { consistent: true });
+    expect(sentInput(0).ConsistentRead).toBeUndefined();
+    expect(sentInput(1).ConsistentRead).toBe(true);
+  });
+
   it('returns undefined when there is no item', async () => {
     send.mockResolvedValueOnce({});
     expect(await store.get({ PK, SK: 'CAT#a' })).toBeUndefined();

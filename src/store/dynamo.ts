@@ -51,8 +51,12 @@ export class DynamoStore implements Store {
     return new DynamoStore(client, table);
   }
 
-  async get(key: Key): Promise<Item | undefined> {
-    const result = await this.client.send(new GetCommand({ TableName: this.table, Key: keyOf(key) }));
+  async get(key: Key, opts: { consistent?: boolean } = {}): Promise<Item | undefined> {
+    const result = await this.client.send(new GetCommand({
+      TableName: this.table,
+      Key: keyOf(key),
+      ...(opts.consistent ? { ConsistentRead: true } : {}),
+    }));
     return result.Item as Item | undefined;
   }
 

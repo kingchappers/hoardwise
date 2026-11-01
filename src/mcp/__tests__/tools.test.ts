@@ -79,7 +79,7 @@ describe('tool definitions', () => {
     expect(t.annotations).toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
   });
 
-  it('lists exactly the five tools for a read-scope token', async () => {
+  it('lists exactly the read and style tools for a read-scope token', async () => {
     const request = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
@@ -88,7 +88,7 @@ describe('tool definitions', () => {
     const authInfo = { token: '', clientId: 'token-id', scopes: ['read'], extra: { userId: 'user-a' } };
     const response = await createMcpEndpoint(MCP_TOOLS)(request, { authInfo });
     const names = ((await response.json()) as { result: { tools: { name: string }[] } }).result.tools.map((t) => t.name);
-    expect(names).toEqual(['month_review', 'category_detail', 'pots_overview', 'chart_data', 'display_guidance']);
+    expect(names).toEqual(['month_review', 'category_detail', 'pots_overview', 'chart_data', 'display_guidance', 'list_styles', 'save_style', 'delete_style', 'list_categories']);
   });
 });
 
@@ -528,7 +528,7 @@ describe('names, notes and units', () => {
 });
 
 describe('display_guidance', () => {
-  it('is the same for any user, with no amounts', async () => {
+  it('is the same for any user without a saved style, with no amounts', async () => {
     const a = await data('display_guidance', {}, 'user-a');
     const b = await data('display_guidance', { ignored: true }, 'user-b');
     expect(a).toEqual(b);

@@ -70,7 +70,7 @@ export class SqliteStore implements Store {
     this.db.prepare('VACUUM INTO ?').run(path);
   }
 
-  async get(key: Key): Promise<Item | undefined> {
+  async get(key: Key, _opts?: { consistent?: boolean }): Promise<Item | undefined> {
     const data = this.readData(key);
     return data === undefined ? undefined : this.toItem(key.PK, key.SK, data);
   }

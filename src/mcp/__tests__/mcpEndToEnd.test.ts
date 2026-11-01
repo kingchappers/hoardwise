@@ -95,7 +95,7 @@ describe('MCP session through the real handler', () => {
 
     const list = await call({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
     const names = JSON.parse(list.body).result.tools.map((t: { name: string }) => t.name);
-    expect(names).toEqual(['month_review', 'category_detail', 'pots_overview', 'chart_data', 'display_guidance']);
+    expect(names).toEqual(['month_review', 'category_detail', 'pots_overview', 'chart_data', 'display_guidance', 'list_styles', 'save_style', 'delete_style', 'list_categories']);
 
     const review = await call({
       jsonrpc: '2.0',

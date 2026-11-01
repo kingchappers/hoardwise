@@ -1,17 +1,15 @@
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { ConditionFailedError, getStore } from '../store';
+import type { Store } from '../store';
 import { pk, catSk } from './db';
 import { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_IDS } from './defaults';
 import { SECURITY_HEADERS, VALID_CATEGORY_TYPES, VALID_CATEGORY_GROUPS, POT_GROUPS } from './constants';
 import type { Category, CategoryGroup, CategoryType, ApiResponse } from './types';
 import { ok, err, parseJsonObject } from './http';
 
-export async function getCategories(
-  _event: APIGatewayProxyEventV2,
-  userId: string,
-  _params: Record<string, string>,
-): Promise<ApiResponse> {
-  const store = getStore();
+// The one list of categories: the defaults plus the person's own, with archived pots marked.
+// Shared by GET /api/categories and the MCP tools so they cannot drift apart.
+export async function loadCategories(store: Store, userId: string): Promise<Category[]> {
   const [customItems, potItems] = await Promise.all(
     ['CAT#', 'POT#'].map(prefix => store.query(pk(userId), { skPrefix: prefix })),
   );
@@ -22,10 +20,17 @@ export async function getCategories(
       .map(item => String(item.categoryId)),
   );
   const custom = customItems.map(toCategory);
-  const categories = [...DEFAULT_CATEGORIES, ...custom].map(category => (
+  return [...DEFAULT_CATEGORIES, ...custom].map(category => (
     archivedIds.has(category.categoryId) ? { ...category, archived: true } : category
   ));
-  return ok({ categories });
+}
+
+export async function getCategories(
+  _event: APIGatewayProxyEventV2,
+  userId: string,
+  _params: Record<string, string>,
+): Promise<ApiResponse> {
+  return ok({ categories: await loadCategories(getStore(), userId) });
 }
 
 function toCategory(item: Record<string, unknown>): Category {

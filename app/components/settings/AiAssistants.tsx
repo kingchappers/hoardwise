@@ -106,7 +106,7 @@ export function AiAssistants(): React.JSX.Element {
       <Title order={2} size="h4" mb="sm">AI assistants</Title>
       <Stack gap="md">
         <Text size="sm">
-          Connect an AI assistant such as Claude to ask about your budget in plain words. It uses the address below. Read-only access lets it look at your data; it can only add spending or income if you give it a token that can write.
+          Connect an AI assistant such as Claude to ask about your budget in plain words. It uses the address below. Read-only access lets it look at your data and keep graphic styles. To let it add spending or income, give it a token that can write or choose "View and change" when you sign in.
         </Text>
         <McpAddress url={url} />
 

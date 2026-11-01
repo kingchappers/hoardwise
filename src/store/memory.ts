@@ -24,7 +24,7 @@ function pick(item: Item, attributes: string[]): Item {
 export class MemoryStore implements Store {
   private readonly partitions = new Map<string, Map<string, Attributes>>();
 
-  async get(key: Key): Promise<Item | undefined> {
+  async get(key: Key, _opts?: { consistent?: boolean }): Promise<Item | undefined> {
     const row = this.rowOf(key);
     return row === undefined ? undefined : this.toItem(key.PK, key.SK, row);
   }
