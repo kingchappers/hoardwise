@@ -88,7 +88,7 @@ describe('tool definitions', () => {
     const authInfo = { token: '', clientId: 'token-id', scopes: ['read'], extra: { userId: 'user-a' } };
     const response = await createMcpEndpoint(MCP_TOOLS)(request, { authInfo });
     const names = ((await response.json()) as { result: { tools: { name: string }[] } }).result.tools.map((t) => t.name);
-    expect(names).toEqual(['month_review', 'category_detail', 'pots_overview', 'chart_data', 'display_guidance', 'list_styles', 'save_style', 'delete_style']);
+    expect(names).toEqual(['month_review', 'category_detail', 'pots_overview', 'chart_data', 'display_guidance', 'list_styles', 'save_style', 'delete_style', 'list_categories']);
   });
 });
 

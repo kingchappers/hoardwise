@@ -91,13 +91,13 @@ describe('POST /mcp authentication', () => {
     const res = await invoke(makeEvent({ authorization: `Bearer ${token}` }));
     expect(res.statusCode).toBe(200);
     const names = JSON.parse(res.body).result.tools.map((t: { name: string }) => t.name);
-    expect(names).toEqual(['month_review', 'category_detail', 'pots_overview', 'chart_data', 'display_guidance', 'list_styles', 'save_style', 'delete_style']);
+    expect(names).toEqual(['month_review', 'category_detail', 'pots_overview', 'chart_data', 'display_guidance', 'list_styles', 'save_style', 'delete_style', 'list_categories']);
   });
 
   it('decodes a base64 body', async () => {
     const token = await tokenFor('user-a', 'read');
     const res = await invoke(makeEvent({ authorization: `Bearer ${token}`, base64: true }));
-    expect(JSON.parse(res.body).result.tools).toHaveLength(MCP_TOOLS.length);
+    expect(JSON.parse(res.body).result.tools).toHaveLength(MCP_TOOLS.filter((t) => t.access !== 'budget').length);
   });
 
   it('answers 401 to a session cookie alone and never calls the auth provider', async () => {
@@ -234,7 +234,7 @@ describe('POST /mcp through the SDK', () => {
     expect(res.headers?.['X-Content-Type-Options']).toBe('nosniff');
     const listed = JSON.parse(res.body).result.tools;
     expect(listed).toEqual(
-      MCP_TOOLS.map((t) =>
+      MCP_TOOLS.filter((t) => t.access !== 'budget').map((t) =>
         expect.objectContaining({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: t.annotations }),
       ),
     );
@@ -276,7 +276,7 @@ describe('POST /mcp through the SDK', () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers?.['Content-Type']).toMatch(/^application\/json/);
     const names = JSON.parse(res.body).result.tools.map((t: { name: string }) => t.name);
-    expect(names).toEqual(MCP_TOOLS.map((t) => t.name));
+    expect(names).toEqual(MCP_TOOLS.filter((t) => t.access !== 'budget').map((t) => t.name));
   });
 
   it('answers a 2026-07-28 server/discover with the server name', async () => {

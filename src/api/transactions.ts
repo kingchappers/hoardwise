@@ -7,7 +7,7 @@ import { ok, err, parseJsonObject } from './http';
 import { moveToTrash } from './trash';
 import { isCalendarDate, isYearMonth } from './dates';
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function toTransaction(item: Record<string, unknown>): Transaction {
   const transaction: Transaction = {
