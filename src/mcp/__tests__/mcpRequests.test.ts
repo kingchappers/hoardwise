@@ -91,7 +91,7 @@ describe('POST /mcp authentication', () => {
     const res = await invoke(makeEvent({ authorization: `Bearer ${token}` }));
     expect(res.statusCode).toBe(200);
     const names = JSON.parse(res.body).result.tools.map((t: { name: string }) => t.name);
-    expect(names).toEqual(['month_review', 'category_detail', 'pots_overview', 'chart_data', 'display_guidance']);
+    expect(names).toEqual(['month_review', 'category_detail', 'pots_overview', 'chart_data', 'display_guidance', 'list_styles', 'save_style', 'delete_style']);
   });
 
   it('decodes a base64 body', async () => {
@@ -225,7 +225,7 @@ function everythingLogged(): string {
 }
 
 describe('POST /mcp through the SDK', () => {
-  it('lists exactly the five read tools with their annotations and schemas, as one JSON reply', async () => {
+  it('lists exactly the read and style tools with their annotations and schemas, as one JSON reply', async () => {
     const token = await tokenFor('user-a', 'read');
     const res = await invoke(makeEvent({ authorization: `Bearer ${token}` }));
     expect(res.statusCode).toBe(200);

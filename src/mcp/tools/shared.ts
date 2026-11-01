@@ -13,6 +13,13 @@ export const READ_ONLY = {
   openWorldHint: false,
 } as const;
 
+export const WRITES_OWN_DATA = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
 export function clip(text: unknown): string {
   return typeof text === 'string' ? text.slice(0, MAX_TEXT) : '';
 }
