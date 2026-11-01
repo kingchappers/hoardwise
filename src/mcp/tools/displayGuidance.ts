@@ -34,7 +34,13 @@ export const displayGuidanceTool: McpTool = {
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: READ_ONLY,
   async run(_args, context) {
-    const defaultStyle = await defaultStyleFor(context.userId);
+    let defaultStyle: Awaited<ReturnType<typeof defaultStyleFor>> = null;
+    try {
+      defaultStyle = await defaultStyleFor(context.userId);
+    } catch (error) {
+      // Never the message or any user text: just which tool and what kind of error.
+      console.error('mcp tool style read failed', { tool: 'display_guidance', error: error instanceof Error ? error.name : 'unknown' });
+    }
     const data = { principles: PRINCIPLES, variations: VARIATIONS, defaultStyle, styleNote: STYLE_NOTE };
     // The note goes only with the person's own text.
     return { ok: true, data: defaultStyle ? { note: PRIVACY_NOTE, ...data } : data };

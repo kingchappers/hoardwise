@@ -54,8 +54,26 @@ describe('style tool definitions', () => {
     expect(tool('list_styles').annotations).toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
   });
 
-  it('save_style writes without destroying', () => {
-    expect(tool('save_style').annotations).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false });
+  it('save_style can replace a same-name style, so it is marked destructive', () => {
+    expect(tool('save_style').annotations).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false });
+  });
+
+  it('save_style tells the assistant to confirm before replacing a style', () => {
+    const text = tool('save_style').description;
+    expect(text).toContain('list_styles');
+    expect(text).toContain('created: false');
+    expect(text).toMatch(/confirm with the person before replacing it/i);
+  });
+
+  it('save_style limits the description to what every read returns (200)', async () => {
+    const props = (tool('save_style').inputSchema as any).properties;
+    expect(props.description.description).toContain('200');
+    expect(props.description.description).not.toContain('500');
+    expect(props.description.maxLength).toBe(200);
+    const long = 'a'.repeat(200);
+    await data('save_style', { name: 'Long', description: long });
+    expect((await data('list_styles', {})).styles[0].description).toBe(long);
+    expect(await message('save_style', { name: 'Longer', description: 'a'.repeat(201) })).toContain('200');
   });
 
   it('delete_style is destructive', () => {
@@ -222,6 +240,23 @@ describe('display_guidance with styles', () => {
     expect(await data('display_guidance', {})).not.toHaveProperty('note');
     await data('save_style', { name: 'Calm', description: 'Soft.', makeDefault: true });
     expect((await data('display_guidance', {})).note).toBe(PRIVACY_NOTE);
+  });
+
+  it('still answers, with a null default style, when the store cannot be read, and logs only the tool name and error name', async () => {
+    const failing = Object.assign(new MemoryStore(), {
+      query: vi.fn().mockRejectedValue(new TypeError('secret user text')),
+      get: vi.fn().mockRejectedValue(new TypeError('secret user text')),
+    });
+    setStore(failing);
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const guidance = await data('display_guidance', {});
+    expect(guidance.defaultStyle).toBeNull();
+    expect(guidance.principles.length).toBeGreaterThan(5);
+    expect(guidance).not.toHaveProperty('note');
+    expect(JSON.stringify(spy.mock.calls)).toContain('display_guidance');
+    expect(JSON.stringify(spy.mock.calls)).toContain('TypeError');
+    expect(JSON.stringify(spy.mock.calls)).not.toContain('secret user text');
+    spy.mockRestore();
   });
 
   it('stays a read tool with read-only annotations', () => {

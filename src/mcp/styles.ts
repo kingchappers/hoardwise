@@ -4,10 +4,11 @@ import { ConditionFailedError, type Item, type Store, type TxOp } from '../store
 
 export const MAX_STYLES = 20;
 export const MAX_STYLE_NAME = 40;
-export const MAX_STYLE_DESCRIPTION = 500;
+export const MAX_STYLE_DESCRIPTION = 200;
 
 const STYLE_PREFIX = 'STYLE#';
-const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]/;
+// C0 and C1 controls, line and paragraph separators, and the marks that hide or reorder text.
+const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F-\u009F\u200E\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069]/;
 const FORBIDDEN_FRAGMENTS = ['<', '>', 'http://', 'https://', 'www.', ']('];
 
 export interface GraphicStyle {
@@ -87,8 +88,8 @@ interface SaveInput {
   renameFrom: string | undefined;
 }
 
+export const NOT_FOUND = 'There is no saved style with that name.';
 const NAME_TAKEN = 'Another saved style already has that name.';
-const NOT_FOUND = 'There is no saved style with that name.';
 const GONE = 'That style no longer exists.';
 
 function lookupName(value: unknown): string | undefined {

@@ -22,6 +22,13 @@ describe('AiAssistants', () => {
     expect(screen.getByLabelText('Your Hoardwise address')).toHaveValue(MCP_URL);
   });
 
+  it('says what each kind of access lets an assistant do', () => {
+    renderSection();
+    const text = screen.getByText(/Connect an AI assistant such as Claude/).textContent ?? '';
+    expect(text).toContain('Read-only access lets it look at your data and keep graphic styles');
+    expect(text).toContain('To let it add spending or income, give it a token that can write or choose "View and change" when you sign in');
+  });
+
   it('copies the address', async () => {
     const user = userEvent.setup();
     renderSection();

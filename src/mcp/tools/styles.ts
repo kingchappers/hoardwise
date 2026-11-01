@@ -1,11 +1,7 @@
 import { getStore } from '../../store';
-import { deleteStyle, getDefaultStyle, listStyles, MAX_STYLES, saveStyle } from '../styles';
+import { deleteStyle, getDefaultStyle, listStyles, MAX_STYLE_DESCRIPTION, MAX_STYLES, NOT_FOUND, saveStyle } from '../styles';
 import type { McpTool, ToolOutcome } from '../types';
-import { PRIVACY_NOTE, READ_ONLY, WRITES_OWN_DATA, clip } from './shared';
-
-const NOT_FOUND = 'There is no saved style with that name.';
-
-const UNKNOWN_FIELD = 'That tool does not take that field.';
+import { PRIVACY_NOTE, READ_ONLY, UNKNOWN_FIELD, WRITES_OWN_DATA, clip } from './shared';
 
 // A fixed message, so an unvalidated key is never echoed back.
 function unknownField(args: Record<string, unknown>, allowed: string[]): string | undefined {
@@ -39,20 +35,20 @@ export const saveStyleTool: McpTool = {
   name: 'save_style',
   title: 'Save a style',
   description:
-    'Saves a graphic style by name, or updates one with the same name. Save only when the person asks or agrees, for example "save this as \'big number\'", and confirm the name back to them. A style is only a name and a short plain-text description of the look: no images, no data, no links. "Always show me that one" means makeDefault true; makeDefault false clears the default if it is this style. Use renameFrom to rename an existing style.',
+    'Saves a graphic style by name, or updates one with the same name. Save only when the person asks or agrees, for example "save this as \'big number\'", and confirm the name back to them. A style is only a name and a short plain-text description of the look: no images, no data, no links. "Always show me that one" means makeDefault true; makeDefault false clears the default if it is this style. Use renameFrom to rename an existing style. If a style with that name already exists (check with list_styles, or created: false in the result) this replaces it, so confirm with the person before replacing it.',
   access: 'styles',
   inputSchema: {
     type: 'object',
     properties: {
       name: nameProperty,
-      description: { type: 'string', description: 'A short plain-text description of the look, at most 500 characters.' },
+      description: { type: 'string', maxLength: MAX_STYLE_DESCRIPTION, description: `A short plain-text description of the look, at most ${MAX_STYLE_DESCRIPTION} characters.` },
       makeDefault: { type: 'boolean', description: 'True to make this the default style; false to clear the default if it is this style.' },
       renameFrom: { type: 'string', description: 'The name of an existing style to rename to name.' },
     },
     required: ['name', 'description'],
     additionalProperties: false,
   },
-  annotations: WRITES_OWN_DATA,
+  annotations: { ...WRITES_OWN_DATA, destructiveHint: true },
   async run(args, context): Promise<ToolOutcome> {
     const unknown = unknownField(args, ['name', 'description', 'makeDefault', 'renameFrom']);
     if (unknown) return { ok: false, message: unknown };

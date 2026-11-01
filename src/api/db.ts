@@ -13,7 +13,6 @@ export const PUSH_INDEX_PK = 'PUSHIDX';
 export const pushSubscriptionSk = (endpointHash: string): string => `PUSHSUB#${endpointHash}`;
 export const pushIndexSk = (userId: string): string => `USER#${userId}`;
 
-
 // Saved graphic styles: one row per style, plus one marker naming the default (so there can never be two).
 export const styleSk = (styleId: string): string => `STYLE#${styleId}`;
 // One row per style name (lowercased), written with ifAbsent: it is what keeps names unique under concurrency.

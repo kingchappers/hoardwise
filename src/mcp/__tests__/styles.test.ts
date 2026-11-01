@@ -20,7 +20,7 @@ describe('validateStyleText', () => {
   it.each([
     ['empty name', '', 'ok'],
     ['41-character name', 'x'.repeat(41), 'ok'],
-    ['501-character description', 'Name', 'x'.repeat(501)],
+    ['201-character description', 'Name', 'x'.repeat(201)],
     ['empty description', 'Name', '  '],
     ['html', 'Name', '<b>bold</b>'],
     ['closing tag', 'Name', 'a </ b'],
@@ -31,6 +31,16 @@ describe('validateStyleText', () => {
     ['control character', 'Name', 'a\u0007b'],
     ['newline', 'Name', 'a\nb'],
     ['delete character', 'Na\u007Fme', 'fine'],
+    ['C1 control in the name', 'Na\u0085me', 'fine'],
+    ['C1 control in the description', 'Name', 'a\u009Fb'],
+    ['line separator in the name', 'Na\u2028me', 'fine'],
+    ['paragraph separator in the description', 'Name', 'a\u2029b'],
+    ['left-to-right mark in the name', 'Na\u200Eme', 'fine'],
+    ['right-to-left mark in the description', 'Name', 'a\u200Fb'],
+    ['bidi embedding in the name', 'Na\u202Ame', 'fine'],
+    ['bidi override in the description', 'Name', 'a\u202Eb'],
+    ['bidi isolate in the name', 'Na\u2066me', 'fine'],
+    ['pop directional isolate in the description', 'Name', 'a\u2069b'],
   ])('refuses %s', (_label, name, description) => {
     const result = check(name, description);
     expect(result.ok).toBe(false);
@@ -50,7 +60,7 @@ describe('validateStyleText', () => {
     expect(check('  Big number ', ' One big figure, few colours, large text ')).toEqual({
       ok: true, name: 'Big number', description: 'One big figure, few colours, large text',
     });
-    expect(check('x'.repeat(40), 'y'.repeat(500)).ok).toBe(true);
+    expect(check('x'.repeat(40), 'y'.repeat(200)).ok).toBe(true);
   });
 });
 

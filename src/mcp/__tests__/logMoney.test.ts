@@ -18,6 +18,7 @@ import type { McpTool, ToolOutcome } from '../types';
 const NOW = new Date('2026-11-01T12:00:00.000Z');
 const ID = '3f2b8c1e-5d4a-4b7e-9c10-123456789abc';
 const ID2 = '4a2b8c1e-5d4a-4b7e-9c10-123456789abd';
+const USED_FOR_OTHER = 'An entry with this transactionId is already logged with different details. Tell the person it is already in Hoardwise and that they can edit it there. Ask them before logging another entry, and only then use a new transactionId.';
 const UNDO = 'To undo this, delete it in Hoardwise (Transactions) and it goes to the trash.';
 let store: MemoryStore;
 
@@ -67,7 +68,7 @@ describe('money tool definitions', () => {
   it.each(['log_spend', 'log_income'])('%s needs the budget access and is a non-destructive, idempotent change', name => {
     expect(tool(name).access).toBe('budget');
     expect(tool(name).annotations).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false });
-    expect(tool(name).inputSchema).toMatchObject({ additionalProperties: false, required: ['transactionId', 'amount', 'categoryId'] });
+    expect(tool(name).inputSchema).toMatchObject({ additionalProperties: false, required: ['transactionId', 'amount', 'categoryId', 'date'] });
   });
 
   it.each(['log_spend', 'log_income'])('%s tells the assistant to read back, wait for a yes and use list_categories', name => {
@@ -114,11 +115,35 @@ describe('log_spend', () => {
     });
   });
 
-  it('defaults the date to today (UTC) and the description to empty', async () => {
-    const result = await data('log_spend', { transactionId: ID, amount: 500, categoryId: 'cat-groceries' });
+  it('defaults the description to empty', async () => {
+    const result = await data('log_spend', { transactionId: ID, amount: 500, categoryId: 'cat-groceries', date: '2026-11-01' });
     expect(result.saved.date).toBe('2026-11-01');
     expect(result.saved.description).toBe('');
     expect((await txns())[0].SK).toBe(txnSk('2026-11', ID));
+  });
+
+  it.each(['log_spend', 'log_income'])('%s refuses a missing date, names the field and stores nothing', async name => {
+    const categoryId = name === 'log_spend' ? 'cat-groceries' : 'cat-salary';
+    const message = await refusal(name, { transactionId: ID, amount: 500, categoryId });
+    expect(message).toContain('date');
+    expect(await txns()).toHaveLength(0);
+  });
+
+  it.each(['log_spend', 'log_income'])('%s tells the assistant the date is required, local and never guessed', name => {
+    const text = tool(name).description;
+    expect(text).toMatch(/date is required/i);
+    expect(text).toContain('YYYY-MM-DD');
+    expect(text).toMatch(/local time/i);
+    expect(text).toMatch(/never guess/i);
+  });
+
+  it('a retry with the same date is alreadyLogged, also after UTC midnight', async () => {
+    const args = { transactionId: ID, amount: 500, categoryId: 'cat-groceries', date: '2026-11-01' };
+    await data('log_spend', args);
+    const later = new Date('2026-11-02T00:30:00.000Z');
+    const outcome = await run('log_spend', args, 'user-a', later);
+    expect(outcome.ok && outcome.data.alreadyLogged).toBe(true);
+    expect(await txns()).toHaveLength(1);
   });
 
   it('accepts a POT category', async () => {
@@ -177,14 +202,17 @@ describe('retries', () => {
   ])('the same id with a different %s is refused and leaves the first entry', async (_label, change) => {
     await data('log_spend', spend);
     const before = await txns();
-    expect(await refusal('log_spend', { ...spend, ...change })).toBe('That transactionId was already used for a different entry. Use a new one.');
+    const message = await refusal('log_spend', { ...spend, ...change });
+    expect(message).toBe(USED_FOR_OTHER);
+    expect(message).not.toContain('Use a new one');
+    expect(message).toContain('edit it there');
     expect(await txns()).toEqual(before);
   });
 
   it('the same id as an income is refused as a different entry', async () => {
     await data('log_spend', spend);
     const message = await refusal('log_income', { ...spend, categoryId: 'cat-salary' });
-    expect(message).toMatch(/already used/);
+    expect(message).toBe(USED_FOR_OTHER);
     expect((await txns())[0].type).toBe('EXPENSE');
   });
 });
@@ -224,7 +252,7 @@ describe('retry races', () => {
 
 describe('more argument checks', () => {
   it('refuses an own __proto__ key with the fixed message', async () => {
-    const args = JSON.parse(`{"transactionId":"${ID}","amount":100,"categoryId":"cat-groceries","__proto__":{"x":1}}`);
+    const args = JSON.parse(`{"transactionId":"${ID}","amount":100,"categoryId":"cat-groceries","date":"2026-10-30","__proto__":{"x":1}}`);
     expect(await refusal('log_spend', args)).toBe('That tool does not take that field.');
     expect(await txns()).toHaveLength(0);
   });
@@ -258,14 +286,14 @@ describe('more argument checks', () => {
 
 describe('argument checks', () => {
   it.each([
-    ['a missing transactionId', { amount: 1, categoryId: 'cat-groceries' }, 'transactionId'],
+    ['a missing transactionId', { amount: 1, categoryId: 'cat-groceries', date: '2026-10-30' }, 'transactionId'],
     ['a non-UUID transactionId', { ...spend, transactionId: 'abc' }, 'transactionId'],
     ['a numeric transactionId', { ...spend, transactionId: 5 }, 'transactionId'],
     ['amount 0', { ...spend, amount: 0 }, 'amount'],
     ['amount -5', { ...spend, amount: -5 }, 'amount'],
     ['amount 1.5', { ...spend, amount: 1.5 }, 'amount'],
     ['amount "12"', { ...spend, amount: '12' }, 'amount'],
-    ['a missing amount', { transactionId: ID, categoryId: 'cat-groceries' }, 'amount'],
+    ['a missing amount', { transactionId: ID, categoryId: 'cat-groceries', date: '2026-10-30' }, 'amount'],
     ['amount over the maximum', { ...spend, amount: MAX_AMOUNT_PENCE + 1 }, 'amount'],
     ['a malformed date', { ...spend, date: '01/11/2026' }, 'date'],
     ['an impossible date', { ...spend, date: '2026-02-30' }, 'date'],
@@ -274,7 +302,7 @@ describe('argument checks', () => {
     ['a date two days ahead', { ...spend, date: isoDay(2) }, 'date'],
     ['a 201-character description', { ...spend, description: 'a'.repeat(201) }, 'description'],
     ['a non-string description', { ...spend, description: 5 }, 'description'],
-    ['a missing category', { transactionId: ID, amount: 100 }, 'categoryId'],
+    ['a missing category', { transactionId: ID, amount: 100, date: '2026-10-30' }, 'categoryId'],
     ['a non-string category', { ...spend, categoryId: 5 }, 'categoryId'],
   ])('refuses %s, names the field and stores nothing', async (_label, args, field) => {
     expect(await refusal('log_spend', args)).toContain(field);
