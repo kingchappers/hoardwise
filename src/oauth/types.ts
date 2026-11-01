@@ -2,6 +2,10 @@ import type { TokenScope } from '../auth/tokens';
 
 export type OAuthScope = TokenScope;
 
+export const REFRESH_PK = 'OAUTH#REFRESH';
+// A rotated refresh token leaves a tombstone here until its own expiry, so a replay is recognised as reuse.
+export const REFRESH_USED_PK = 'OAUTH#REFRESH-USED';
+
 export const CODE_TTL_SECONDS = 60;
 export const ACCESS_TTL_SECONDS = 3600;
 export const REFRESH_TTL_SECONDS = 90 * 86400;

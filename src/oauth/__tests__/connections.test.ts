@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { MAX_TOKENS_PER_USER, TokenLimitError, createToken, findToken, listTokens, revokeToken } from '../../auth/tokens';
+import { MAX_TOKENS_PER_USER, TokenLimitError, createToken, findToken, listTokens, revokeAllTokens, revokeToken } from '../../auth/tokens';
 import { hashToken } from '../../auth/localData';
 import { MemoryStore } from '../../store/memory';
 import { createConnection, rotateConnection } from '../connections';
@@ -139,5 +139,73 @@ describe('revokeToken on a connection', () => {
     await revokeToken(store, 'u1', conn.tokenId);
     expect(await store.query('OAUTH#REFRESH')).toHaveLength(0);
     expect(await store.query('AUTH#TOKENS')).toHaveLength(0);
+  });
+});
+
+describe('revoke racing a rotation', () => {
+  class RacingStore extends MemoryStore {
+    onListingRead: (() => Promise<void>) | undefined;
+    override async get(key: { PK: string; SK: string }) {
+      const item = await super.get(key);
+      if (key.PK.startsWith('AUTH#TOKENLIST#') && this.onListingRead) {
+        const hook = this.onListingRead;
+        this.onListingRead = undefined;
+        await hook();
+      }
+      return item;
+    }
+  }
+
+  it('keeps a connection revoked after the rotation read the listing dead', async () => {
+    const racing = new RacingStore();
+    const conn = await createConnection(racing, input, NOW);
+    racing.onListingRead = async () => { await revokeToken(racing, 'u1', conn.tokenId); };
+
+    const result = await rotateConnection(racing, conn.refreshToken, 'c1', NOW + 10);
+    expect(['invalid', 'reused']).toContain(result);
+    expect(await findToken(racing, conn.accessToken, NOW + 11)).toBeUndefined();
+    expect(await listTokens(racing, 'u1')).toHaveLength(0);
+    expect(await racing.query('AUTH#TOKENS')).toHaveLength(0);
+    expect(await racing.query('OAUTH#REFRESH')).toHaveLength(0);
+    expect(await rotateConnection(racing, conn.refreshToken, 'c1', NOW + 12)).toMatch(/^(invalid|reused)$/);
+  });
+});
+
+describe('rotateConnection across users', () => {
+  it('does not revoke another user connection when the refresh token is presented with a different client', async () => {
+    const a = await createConnection(store, input, NOW);
+    await createConnection(store, { ...input, userId: 'u2', clientId: 'c2' }, NOW);
+    expect(await rotateConnection(store, a.refreshToken, 'c2', NOW + 1)).toBe('invalid');
+    expect(await findToken(store, a.accessToken, NOW + 2)).toBeDefined();
+    expect(typeof await rotateConnection(store, a.refreshToken, 'c1', NOW + 3)).toBe('object');
+  });
+
+  it('does not revoke when a rotated token is replayed under a different client', async () => {
+    const a = await createConnection(store, input, NOW);
+    const next = await rotateConnection(store, a.refreshToken, 'c1', NOW + 1);
+    if (typeof next === 'string') throw new Error(next);
+    expect(await rotateConnection(store, a.refreshToken, 'c2', NOW + 2)).toBe('invalid');
+    expect(await findToken(store, next.accessToken, NOW + 3)).toBeDefined();
+  });
+});
+
+describe('revokeAllTokens with connections', () => {
+  it('removes every OAuth row so no refresh token survives', async () => {
+    const a = await createConnection(store, input, NOW);
+    const b = await createConnection(store, { ...input, userId: 'u2', clientId: 'c2' }, NOW);
+    const rotated = await rotateConnection(store, b.refreshToken, 'c2', NOW + 1);
+    if (typeof rotated === 'string') throw new Error(rotated);
+    expect(await store.query('OAUTH#REFRESH-USED')).toHaveLength(1);
+
+    await revokeAllTokens(store);
+
+    expect(await rotateConnection(store, a.refreshToken, 'c1', NOW + 2)).toBe('invalid');
+    expect(await rotateConnection(store, rotated.refreshToken, 'c2', NOW + 2)).toBe('invalid');
+    expect(await rotateConnection(store, b.refreshToken, 'c2', NOW + 2)).toBe('invalid');
+    expect(await store.query('OAUTH#REFRESH')).toHaveLength(0);
+    expect(await store.query('OAUTH#REFRESH-USED')).toHaveLength(0);
+    expect(await store.query('AUTH#TOKENS')).toHaveLength(0);
+    expect(await listTokens(store, 'u1')).toHaveLength(0);
+    expect(await listTokens(store, 'u2')).toHaveLength(0);
   });
 });

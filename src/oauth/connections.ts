@@ -2,11 +2,8 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { hashToken } from '../auth/localData';
 import { LOOKUP_PK, MAX_TOKENS_PER_USER, TokenLimitError, listingPk, revokeToken } from '../auth/tokens';
 import { ConditionFailedError, type Item, type Store, type TxOp } from '../store';
-import { ACCESS_TTL_SECONDS, type OAuthScope, REFRESH_TTL_SECONDS, isLive } from './types';
+import { ACCESS_TTL_SECONDS, type OAuthScope, REFRESH_PK, REFRESH_TTL_SECONDS, REFRESH_USED_PK, isLive } from './types';
 
-const REFRESH_PK = 'OAUTH#REFRESH';
-// A rotated refresh token leaves a tombstone here until its own expiry, so a replay is recognised as reuse.
-const USED_PK = 'OAUTH#REFRESH-USED';
 const PREFIX_LENGTH = 8;
 
 interface Credentials {
@@ -71,7 +68,7 @@ export async function rotateConnection(
   const oldHash = hashToken(refreshToken);
   const row = await store.get({ PK: REFRESH_PK, SK: oldHash });
   if (!row) {
-    const used = await store.get({ PK: USED_PK, SK: oldHash });
+    const used = await store.get({ PK: REFRESH_USED_PK, SK: oldHash });
     if (!used || !isLive(used, nowSeconds) || used.clientId !== clientId) return 'invalid';
     await revokeToken(store, String(used.userId), String(used.tokenId));
     return 'reused';
@@ -87,10 +84,12 @@ export async function rotateConnection(
   const creds = newCredentials(scope);
   const ops: TxOp[] = [
     { delete: { PK: REFRESH_PK, SK: oldHash }, ifPresent: true },
-    { put: { PK: USED_PK, SK: oldHash, userId, tokenId, clientId, expiresAt: row.expiresAt as number }, ifAbsent: true },
+    { put: { PK: REFRESH_USED_PK, SK: oldHash, userId, tokenId, clientId, expiresAt: row.expiresAt as number }, ifAbsent: true },
     { delete: { PK: LOOKUP_PK, SK: String(listing.hash) } },
     ...rowsFor(userId, clientId, scope, tokenId, String(listing.name), Number(listing.createdAt), numberOrNull(listing), creds, nowSeconds),
   ];
+  // Revoking deletes the refresh row in the same transaction as the listing row, so the ifPresent delete above fails if the
+  // connection was revoked after the reads: a rotation can never bring a revoked connection back.
   try {
     await store.transact(ops);
   } catch (error) {

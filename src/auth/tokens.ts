@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import type { Item, Store } from '../store';
+import type { Item, Store, TxOp } from '../store';
+import { REFRESH_PK, REFRESH_USED_PK } from '../oauth/types';
 import { hashToken } from './localData';
 
 export type TokenScope = 'read' | 'write';
@@ -13,7 +14,6 @@ export const LAST_USED_INTERVAL_SECONDS = 3600;
 const SECONDS_PER_DAY = 24 * 60 * 60;
 const PREFIX_LENGTH = 8;
 // One shared partition, because Store.query lists a single partition and a lookup must find a token by hash alone.
-const REFRESH_PK = 'OAUTH#REFRESH';
 export const LOOKUP_PK = 'AUTH#TOKENS';
 
 export interface TokenRecord {
@@ -112,12 +112,13 @@ export async function touchToken(store: Store, stored: StoredToken, nowSeconds: 
 export async function revokeToken(store: Store, userId: string, tokenId: string): Promise<boolean> {
   const listing = await store.get({ PK: listingPk(userId), SK: tokenId });
   if (!listing) return false;
-  await store.transact([
+  const ops: TxOp[] = [
     { delete: { PK: LOOKUP_PK, SK: String(listing.hash) } },
     { delete: { PK: listingPk(userId), SK: tokenId } },
-  ]);
-  // An OAuth connection also has a refresh row, which must go with it so the refresh token stops working.
-  if (typeof listing.refreshHash === 'string') await store.delete({ PK: REFRESH_PK, SK: listing.refreshHash });
+  ];
+  // An OAuth connection's refresh row goes in the same transaction, so a rotation that read the listing earlier cannot undo this.
+  if (typeof listing.refreshHash === 'string') ops.push({ delete: { PK: REFRESH_PK, SK: listing.refreshHash } });
+  await store.transact(ops);
   return true;
 }
 
@@ -131,5 +132,11 @@ export async function revokeAllTokens(store: Store): Promise<void> {
   }
   for (const { PK, SK } of lookups) {
     await store.delete({ PK, SK });
+  }
+  // No refresh token may survive: it could mint a new access token after a password recovery.
+  for (const pk of [REFRESH_PK, REFRESH_USED_PK]) {
+    for (const { PK, SK } of await store.query(pk)) {
+      await store.delete({ PK, SK });
+    }
   }
 }
