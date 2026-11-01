@@ -260,6 +260,39 @@ describe('client expiry', () => {
   });
 });
 
+describe('client keep-alive failure', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('still delivers tokens on a refresh when the client write throws, and the new refresh token works', async () => {
+    const first = (await token(exchange(await codeFor()))).body;
+    const patch = vi.spyOn(store, 'patch').mockRejectedValue(new Error('boom secret-detail'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const second = await token({ grant_type: 'refresh_token', refresh_token: first.refresh_token, client_id: clientId });
+    expect(patch).toHaveBeenCalled();
+    expect(second.res?.statusCode).toBe(200);
+    expect(second.body.refresh_token).toEqual(expect.any(String));
+    patch.mockRestore();
+    const third = await token({ grant_type: 'refresh_token', refresh_token: second.body.refresh_token, client_id: clientId });
+    expect(third.res?.statusCode).toBe(200);
+
+    const logged = JSON.stringify(warn.mock.calls);
+    for (const secret of [first.access_token, first.refresh_token, second.body.access_token, second.body.refresh_token, 'secret-detail']) {
+      expect(logged).not.toContain(secret);
+    }
+  });
+
+  it('still delivers tokens on a code exchange when the client write throws', async () => {
+    const code = await codeFor();
+    vi.spyOn(store, 'patch').mockRejectedValue(new Error('boom'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { res, body } = await token(exchange(code));
+    expect(res?.statusCode).toBe(200);
+    expect(body.access_token).toMatch(/^hww_/);
+    const logged = JSON.stringify(warn.mock.calls);
+    for (const secret of [code, VERIFIER, body.access_token, body.refresh_token]) expect(logged).not.toContain(secret);
+  });
+});
+
 describe('POST /api/oauth/token, request shape', () => {
   it('answers another grant_type with 400 unsupported_grant_type', async () => {
     const { res, body } = await token({ grant_type: 'password', client_id: clientId });

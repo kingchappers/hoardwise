@@ -6,7 +6,7 @@ import type { ApiResponse } from '../api/types';
 import type { FailureLimiter } from '../auth/failureLimiter';
 import { hashToken } from '../auth/localData';
 import { LOOKUP_PK, TOKEN_PATTERN, TokenLimitError, listingPk, revokeToken } from '../auth/tokens';
-import { ConditionFailedError, type Store } from '../store';
+import type { Store } from '../store';
 import { ClientLimitError, InvalidRedirectError, getClient, registerClient, touchClient } from './clients';
 import { consumeCode } from './codes';
 import { createConnection, rotateConnection } from './connections';
@@ -174,12 +174,13 @@ function verifierMatches(verifier: string, challenge: string): boolean {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-// A client in use must not expire: this extends it on every successful grant (one small write each time).
+// A client in use must not expire: this extends it on every successful grant (one small write each time). It runs after
+// the tokens are issued, so it is best effort: a failure here must never lose them or make a retry look like a replay.
 async function keepClientAlive(store: Store, clientId: string, nowSeconds: number): Promise<void> {
   try {
     await touchClient(store, clientId, nowSeconds);
   } catch (error) {
-    if (!(error instanceof ConditionFailedError)) throw error;
+    console.warn('OAuth client expiry update failed:', clientId, error instanceof Error ? error.name : 'Error');
   }
 }
 
