@@ -232,8 +232,9 @@ async function refreshTokens(store: Store, fields: Map<string, string>, nowSecon
 async function token(event: APIGatewayProxyEventV2, deps: OauthPublicDeps): Promise<ApiResponse> {
   const sourceIp = event.requestContext.http.sourceIp;
   const parsed = parseForm(event);
-  // A refresh needs a 256-bit secret and costs one store read, so it is neither blocked nor counted: a shared address
-  // (a hosted client's backend) must not lock out other people's refreshes. The gateway throttle bounds them.
+  // A refresh needs a 256-bit secret and costs a bad grant up to three indexed reads and one hash, so it is neither blocked nor counted: a shared
+  // address (a hosted client's backend) must not lock out other people's refreshes. On AWS the gateway throttle bounds
+  // them; in the container only the cheapness of each request does.
   if ('fields' in parsed && parsed.fields.get('grant_type') === 'refresh_token') return tokenOutcome(parsed, deps);
   if (deps.tokenLimiter.isBlocked(sourceIp)) return tooManyTokenRequests();
 

@@ -78,9 +78,15 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
     const password = await (io.readPassword ?? promptHidden)('New password: ');
     const problem = validatePassword(password);
     if (problem) throw new Error(problem);
-    await deleteAllSessions(store);
-    await revokeAllTokens(store);
+    // The password goes first: this process is outside the server's login queue, so ending sessions
+    // while the old password still works would let an attacker log straight back in.
     await replacePassword(store, password);
+    await deleteAllSessions(store);
+    try {
+      await revokeAllTokens(store);
+    } catch {
+      throw new Error('The password was changed, but not every access token could be revoked. Run this command again to finish.');
+    }
     await clearThrottle(store);
     return 'Password reset. All sessions and access tokens have ended and any login lock-out is cleared.';
   }
