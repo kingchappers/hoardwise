@@ -68,3 +68,16 @@ variable "vapid_subject" {
   description = "VAPID subject: an https address or mailto address that identifies this app."
   default     = "https://budget.scgrid.xyz"
 }
+
+# The gateway throttle on /mcp, shared by everyone (INFRA-01, AUTH-18). The per-user limit is in the handler.
+variable "mcp_throttle_rate_limit" {
+  type        = number
+  description = "Steady requests per second allowed on /mcp, across all users."
+  default     = 5
+}
+
+variable "mcp_throttle_burst_limit" {
+  type        = number
+  description = "Burst of requests allowed on /mcp, across all users."
+  default     = 10
+}

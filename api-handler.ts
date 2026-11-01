@@ -10,6 +10,8 @@ import { createTokenRouter } from './src/api/tokenRouter';
 import { authenticateToken, presentsAccessToken, tokenAccessRejection } from './src/auth/tokenAuth';
 import { touchToken } from './src/auth/tokens';
 import { createFailureLimiter } from './src/auth/failureLimiter';
+import { handleMcpRequest } from './src/mcp/handler';
+import { MCP_TOOLS } from './src/mcp/tools';
 
 const router = createRouter();
 registerApiRoutes(router);
@@ -67,6 +69,9 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   // A failure inside a handler is the server's, not an authentication failure, so it is kept apart
   // from the 401s below and answered with a generic body; the detail goes to the logs only.
   try {
+    if (event.rawPath === '/mcp') {
+      return await handleMcpRequest(event, MCP_TOOLS, { store: await initStore(), now: new Date(), tokenFailures });
+    }
     if (presentsAccessToken(event)) return await handleTokenRequest(event);
 
     const auth = await initAuth();

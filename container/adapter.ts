@@ -203,7 +203,7 @@ export function createRequestListener(deps: AdapterDeps): (req: IncomingMessage,
       return;
     }
 
-    if (pathname.startsWith('/api/')) {
+    if (pathname.startsWith('/api/') || routed === '/mcp') {
       let body = '';
       if (!readOnly) {
         try {

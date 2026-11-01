@@ -272,6 +272,30 @@ describe('the body limit', () => {
   });
 });
 
+describe('the /mcp route', () => {
+  it('sends POST /mcp to the API handler as it does /api/', async () => {
+    await start();
+    const response = await fetch(`${base}/mcp`, { method: 'POST', body: '{"jsonrpc":"2.0"}' });
+    expect(response.status).toBe(200);
+    expect(seen[0].rawPath).toBe('/mcp');
+    expect(seen[0].body).toBe('{"jsonrpc":"2.0"}');
+  });
+
+  it('sends GET /mcp to the API handler with no body', async () => {
+    await start();
+    await fetch(`${base}/mcp`);
+    expect(seen[0].rawPath).toBe('/mcp');
+    expect(seen[0].body).toBeUndefined();
+  });
+
+  it('answers 413 to a body over the cap without calling the handler', async () => {
+    await start({ maxBodyBytes: 1024 });
+    const response = await fetch(`${base}/mcp`, { method: 'POST', body: 'x'.repeat(2048) });
+    expect(response.status).toBe(413);
+    expect(seen).toHaveLength(0);
+  });
+});
+
 describe('client aborts and logging', () => {
   it('stays quiet when a client aborts mid-body and keeps serving', async () => {
     const logs: string[] = [];

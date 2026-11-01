@@ -1,7 +1,7 @@
 # Static file Lambda execution role (logs only — no data access)
 resource "aws_iam_role" "lambda_role" {
   name = "${var.app_name}-lambda-role"
-  
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -64,7 +64,7 @@ resource "aws_lambda_function" "app" {
 # API Gateway REST API
 resource "aws_apigatewayv2_api" "app" {
   name          = "${var.app_name}-api"
-  description = "API for the budget application"
+  description   = "API for the budget application"
   protocol_type = "HTTP"
 
   # No cors_configuration block: the SPA and the API share this same gateway
@@ -73,7 +73,7 @@ resource "aws_apigatewayv2_api" "app" {
   # cross-origin (HTTP-SECURITY, INFRA-05 review, 2026-09-12).
 
   api_key_selection_expression = "$request.header.x-api-key"
-  version = 0.1
+  version                      = 0.1
 
   tags = {
     Environment = var.environment
@@ -106,6 +106,14 @@ resource "aws_apigatewayv2_stage" "default" {
   default_route_settings {
     throttling_rate_limit  = 100
     throttling_burst_limit = 50
+  }
+
+  # /mcp is for assistants, not browsers: a tighter throttle bounds a flood (INFRA-01, AUTH-18).
+  # It is shared by everyone. Referencing the route makes the stage wait for it to exist.
+  route_settings {
+    route_key              = aws_apigatewayv2_route.mcp.route_key
+    throttling_rate_limit  = var.mcp_throttle_rate_limit
+    throttling_burst_limit = var.mcp_throttle_burst_limit
   }
 
   access_log_settings {
@@ -155,7 +163,7 @@ output "acm_validation_cname" {
 
 # Wait for cert validation to complete (one-time, after you add the CNAME)
 resource "aws_acm_certificate_validation" "budget" {
-  certificate_arn         = aws_acm_certificate.budget.arn
+  certificate_arn = aws_acm_certificate.budget.arn
   # Hardcode the FQDN you added in Porkbun after first apply,
   # or use a data source to look it up. See note below.
   validation_record_fqdns = ["_b1b248fd28f0182e40eb25fac9dc4eea.budget.scgrid.xyz."]
@@ -259,7 +267,7 @@ resource "aws_cloudwatch_log_resource_policy" "apigateway_write" {
     Version = "2012-10-17",
     Statement = [
       {
-        Effect = "Allow",
+        Effect    = "Allow",
         Principal = { Service = "apigateway.amazonaws.com" },
         Action = [
           "logs:CreateLogStream",

@@ -25,6 +25,7 @@
     "@mantine/form": "^8.3.7",
     "@mantine/hooks": "^8.3.7",
     "@mantine/notifications": "8.3.12",
+    "@modelcontextprotocol/server": "2.4.0",
     "@react-router/fs-routes": "^8.3.0",
     "@react-router/node": "^8.3.0",
     "@react-router/serve": "^8.3.0",

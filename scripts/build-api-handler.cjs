@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const sdkRuntime = require('./sdk-runtime-deps.cjs');
 
 // Ensure build/api directory exists
 const apiBuildDir = path.join(__dirname, '../build/api');
@@ -32,13 +33,15 @@ const packageJson = {
     'jwks-rsa': '^3.2.1',
     '@aws-sdk/client-dynamodb': '^3.0.0',
     '@aws-sdk/lib-dynamodb': '^3.0.0',
-  }
+    ...sdkRuntime.dependencies,
+  },
+  overrides: sdkRuntime.overrides,
 };
 fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
 
 // Install dependencies in build/api
 console.log('Installing Lambda dependencies...');
-execSync('npm install --production', { cwd: apiBuildDir, stdio: 'inherit' });
+execSync('npm install --production --ignore-scripts', { cwd: apiBuildDir, stdio: 'inherit' });
 
 // Clean up package.json and package-lock.json (not needed in Lambda)
 fs.unlinkSync(packageJsonPath);
