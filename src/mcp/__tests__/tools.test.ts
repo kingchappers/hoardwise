@@ -392,16 +392,35 @@ describe('chart_data', () => {
     expect((await run('chart_data', { view: 'month-summary', month: '2026-12' })).ok).toBe(false);
   });
 
-  it('month-summary gives income then spending', async () => {
+  it('month-summary series includes Put into pots and Actually spent', async () => {
+    await addPot('user-a', 'cat-holidays');
     await addTx('user-a', '2026-10-02', 'INCOME', 'cat-salary', 200000);
     await addTx('user-a', '2026-10-03', 'EXPENSE', 'cat-groceries', 1234);
+    await addTx('user-a', '2026-10-04', 'SET_ASIDE', 'cat-holidays', 5000);
     const result = await data('chart_data', { view: 'month-summary' });
     expect(result.series).toEqual([
       { label: 'Income', value: 200000 },
-      { label: 'Spending', value: 1234 },
+      { label: 'Expenses', value: 1234 },
+      { label: 'Put into pots', value: 5000 },
+      { label: 'Spent + put away', value: 6234 },
+      { label: 'Actually spent', value: 1234 },
     ]);
     expect(result.accessibleSummary).toContain('£12.34');
-    expect(result.accessibleSummary.split('. ').length).toBe(1);
+    expect(result.accessibleSummary).toContain('£62.34');
+  });
+
+  it('month-summary says so when spent and put away is over income', async () => {
+    await addTx('user-a', '2026-10-02', 'INCOME', 'cat-salary', 1000);
+    await addTx('user-a', '2026-10-03', 'EXPENSE', 'cat-groceries', 1500);
+    const result = await data('chart_data', { view: 'month-summary' });
+    expect(result.accessibleSummary).toContain('£5.00 more than your income');
+  });
+
+  it('month_review keeps spending.total unchanged and adds figures', async () => {
+    await addTx('user-a', '2026-10-02', 'EXPENSE', 'cat-groceries', 1234);
+    const result = await data('month_review', { month: '2026-10' });
+    expect(result.spending.total).toBe(1234);
+    expect(result.figures.actuallySpent).toBe(1234);
   });
 
   it('category-share lists spending largest first', async () => {

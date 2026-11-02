@@ -62,6 +62,40 @@ const review = (overrides: Partial<ReviewInput>) =>
 const line = (result: ReturnType<typeof buildMonthReview>, categoryId: string) =>
   result.categories.find((c) => c.categoryId === categoryId);
 
+describe('buildMonthReview figures', () => {
+  const october = (): ReturnType<typeof buildMonthReview> =>
+    review({
+      month: '2026-10',
+      now: new Date('2026-11-05T12:00:00Z'),
+      categories: [cat('food'), cat('holiday', 'POT'), cat('salary', 'INCOME')],
+      transactions: [
+        tx('2026-10-01', 'INCOME', 'salary', 200000),
+        tx('2026-10-02', 'EXPENSE', 'food', 5000),
+        tx('2026-10-03', 'EXPENSE', 'holiday', 3000),
+      ],
+      pots: [
+        pot('holiday', {
+          months: [
+            { yearMonth: '2026-09', opening: 0, setAside: 99999, autoAdded: 0, takeOut: 0, spent: 0, closing: 99999 },
+            { yearMonth: '2026-10', opening: 0, setAside: 10000, autoAdded: 0, takeOut: 0, spent: 3000, closing: 7000 },
+          ],
+        }),
+        pot('empty'),
+      ],
+    });
+
+  it('exposes figures that reconcile', () => {
+    const { figures } = october();
+    expect(figures).toMatchObject({ income: 200000, expensesOutsidePots: 5000, putIntoPots: 10000, actuallySpent: 8000 });
+    expect(figures.leftAfterPots).toBe(figures.income - figures.spentAndPutAway);
+    expect(figures.spentAndPutAway).toBe(15000);
+  });
+
+  it('keeps spending.total as the sum of expenses', () => {
+    expect(october().spending.total).toBe(8000);
+  });
+});
+
 describe('buildMonthReview', () => {
   it('gives a new account with no data dataLevel none and no comparisons', () => {
     const result = review({ month: '2026-10', now: new Date('2026-10-20T12:00:00Z') });
