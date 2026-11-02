@@ -113,6 +113,21 @@ export function createApi(request: Request) {
       await request(`/api/targets/${encodeURIComponent(categoryId)}`, { method: 'DELETE' });
     },
 
+    getExpectedIncome: async (): Promise<number | null> => {
+      const res = await request('/api/expected-income') as { amount: number | null };
+      return res.amount;
+    },
+    setExpectedIncome: async (amount: number): Promise<number | null> => {
+      const res = await request('/api/expected-income', {
+        method: 'PUT',
+        body: JSON.stringify({ amount }),
+      }) as { amount: number | null };
+      return res.amount;
+    },
+    clearExpectedIncome: async (): Promise<void> => {
+      await request('/api/expected-income', { method: 'DELETE' });
+    },
+
     getPots: async (asOf: string): Promise<PotSummary[]> => {
       const res = await request(`/api/pots?asOf=${encodeURIComponent(asOf)}`) as { pots: PotSummary[] };
       return res.pots;
