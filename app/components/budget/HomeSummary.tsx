@@ -28,7 +28,7 @@ function FiguresBar({ figures }: { figures: MonthFigures }) {
       partsLabel="Where it went"
       parts={[
         { label: 'Expenses', pence: parts.expenses },
-        { label: 'Put into pots', pence: parts.putIntoPots },
+        { label: 'Put into pots', pence: parts.putIntoPots, negativeLabel: 'Taken out of pots' },
       ]}
       totalLabel="Spent + put away"
       secondary={{ label: 'Actually spent', pence: figures.actuallySpent, explainer: ACTUALLY_SPENT_EXPLAINER }}

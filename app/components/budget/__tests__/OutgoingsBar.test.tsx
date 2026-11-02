@@ -56,4 +56,38 @@ describe('OutgoingsBar', () => {
     expect(screen.getByText(/£857\.37 left after pots/)).toBeInTheDocument();
     expect(screen.getByTestId('parts-bar')).toHaveStyle({ width: '85.7%' });
   });
+
+  describe('when take-outs exceed money put in', () => {
+    const netTakeOut: Partial<OutgoingsBarProps> = {
+      incomePence: 100000,
+      parts: [
+        { label: 'Expenses', pence: 60000 },
+        { label: 'Put into pots', pence: -20000, negativeLabel: 'Taken out of pots' },
+      ],
+    };
+
+    it('never draws a negative or over-full part', () => {
+      renderBar(netTakeOut);
+      const widths = Array.from(screen.getByTestId('parts-bar').children).map(
+        (child) => parseFloat((child as HTMLElement).style.width),
+      );
+      expect(widths).toHaveLength(2);
+      for (const width of widths) {
+        expect(width).toBeGreaterThanOrEqual(0);
+        expect(width).toBeLessThanOrEqual(100);
+      }
+      expect(widths[0] + widths[1]).toBeLessThanOrEqual(100);
+    });
+
+    it('names the negative part as money taken out, with a positive amount', () => {
+      renderBar(netTakeOut);
+      expect(screen.getByText('Taken out of pots £200.00')).toBeInTheDocument();
+      expect(screen.queryByText(/Put into pots/)).not.toBeInTheDocument();
+    });
+
+    it('leaves the total as the net figure', () => {
+      renderBar(netTakeOut);
+      expect(screen.getByText('Spent + put away: £400.00')).toBeInTheDocument();
+    });
+  });
 });

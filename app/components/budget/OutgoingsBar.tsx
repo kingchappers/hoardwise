@@ -9,7 +9,8 @@ export interface OutgoingsBarProps {
   // Shown in place of the income figure while it is not known for a reason other than "not set".
   incomePlaceholder?: string;
   partsLabel: string;
-  parts: { label: string; pence: number }[];
+  // negativeLabel names a part that came out negative, e.g. take-outs larger than money put in.
+  parts: { label: string; pence: number; negativeLabel?: string }[];
   totalLabel: string;
   note?: string;
   secondary?: { label: string; pence: number; explainer: string };
@@ -20,7 +21,8 @@ const BAR_HEIGHT = 22;
 
 function widthPercent(pence: number, scale: number): string {
   if (scale <= 0) return '0%';
-  return `${Math.round((pence / scale) * 1000) / 10}%`;
+  const share = Math.min(Math.max(pence / scale, 0), 1);
+  return `${Math.round(share * 1000) / 10}%`;
 }
 
 function Bar({ width, testId, children }: { width: string; testId: string; children?: React.ReactNode }) {
@@ -54,6 +56,11 @@ function ComparisonLine({ difference, incomeNoun }: { difference: number; income
   );
 }
 
+function legendText(part: OutgoingsBarProps['parts'][number]): string {
+  if (part.pence < 0 && part.negativeLabel) return `${part.negativeLabel} ${formatPence(-part.pence)}`;
+  return `${part.label} ${formatPence(part.pence)}`;
+}
+
 function incomeText(incomePence: number | null, placeholder: string | undefined): string {
   if (placeholder) return placeholder;
   return incomePence === null ? 'Not set' : formatPence(incomePence);
@@ -63,7 +70,7 @@ export function OutgoingsBar(props: OutgoingsBarProps) {
   const { incomePence, parts, secondary } = props;
   const partsTotal = parts.reduce((sum, p) => sum + p.pence, 0);
   const scale = Math.max(incomePence ?? 0, partsTotal);
-  const partsSum = partsTotal || 1;
+  const drawnSum = parts.reduce((sum, p) => sum + Math.max(p.pence, 0), 0);
   const showComparison = !props.incomePlaceholder && incomePence !== null && incomePence > 0;
 
   return (
@@ -83,7 +90,7 @@ export function OutgoingsBar(props: OutgoingsBarProps) {
           {parts.map((part, i) => (
             <Box
               key={part.label}
-              style={{ width: widthPercent(part.pence, partsSum), background: PART_FILLS[i % PART_FILLS.length] }}
+              style={{ width: widthPercent(part.pence, drawnSum), background: PART_FILLS[i % PART_FILLS.length] }}
             />
           ))}
         </Bar>
@@ -94,7 +101,7 @@ export function OutgoingsBar(props: OutgoingsBarProps) {
                 aria-hidden
                 style={{ width: 12, height: 12, borderRadius: 2, background: PART_FILLS[i % PART_FILLS.length] }}
               />
-              <Text size="sm">{part.label} {formatPence(part.pence)}</Text>
+              <Text size="sm">{legendText(part)}</Text>
             </Group>
           ))}
         </Group>
