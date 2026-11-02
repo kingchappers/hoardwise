@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeMonthFigures,
   expectedIncome,
+  outgoingsParts,
   plannedFigures,
   type PotMonthInput,
 } from '../monthFigures';
@@ -84,5 +85,31 @@ describe('expectedIncome', () => {
     expect(expectedIncome(500000, 488129)).toBe(500000);
     expect(expectedIncome(null, 488129)).toBe(488129);
     expect(expectedIncome(null, null)).toBeNull();
+  });
+});
+
+describe('outgoingsParts', () => {
+  it('splits spent and put away into expenses and put into pots', () => {
+    const figures = computeMonthFigures({
+      transactions: [{ type: 'EXPENSE', categoryId: 'groceries', amount: 4000 }],
+      potCategoryIds: new Set(['holiday']),
+      pots: [pot({ opening: 1000, setAside: 5000 })],
+    });
+    expect(outgoingsParts(figures)).toEqual({ expenses: 4000, putIntoPots: 5000 });
+  });
+
+  it('counts spending an overdrawn pot could not cover as expenses', () => {
+    const figures = computeMonthFigures({
+      transactions: [
+        { type: 'EXPENSE', categoryId: 'groceries', amount: 500 },
+        { type: 'EXPENSE', categoryId: 'holiday', amount: 10000 },
+      ],
+      potCategoryIds: new Set(['holiday']),
+      pots: [pot({ opening: 2000, setAside: 1000, spent: 10000 })],
+    });
+    expect(figures.unfundedPotSpending).toBe(7000);
+    const parts = outgoingsParts(figures);
+    expect(parts).toEqual({ expenses: 7500, putIntoPots: 1000 });
+    expect(parts.expenses + parts.putIntoPots).toBe(figures.spentAndPutAway);
   });
 });

@@ -1,4 +1,5 @@
 import type { PotSummary } from '../../api/types';
+import { outgoingsParts } from '../../shared/monthFigures';
 import { loadBudget, loadBudgetWithHistory, shiftMonth, type Budget } from '../data';
 import { buildMonthReview, type MonthReview } from '../review';
 import type { McpTool } from '../types';
@@ -35,16 +36,17 @@ function totalSentence(spentAndPutAway: number, income: number): string {
 
 function monthSummary(review: MonthReview): { series: Point[]; summary: string } {
   if (review.dataLevel === 'none') return nothingLogged(review.month);
-  const { income, expensesOutsidePots, putIntoPots, spentAndPutAway, actuallySpent } = review.figures;
+  const { income, spentAndPutAway, actuallySpent } = review.figures;
+  const parts = outgoingsParts(review.figures);
   return {
     series: [
       { label: 'Income', value: income },
-      { label: 'Expenses', value: expensesOutsidePots },
-      { label: 'Put into pots', value: putIntoPots },
+      { label: 'Expenses', value: parts.expenses },
+      { label: 'Put into pots', value: parts.putIntoPots },
       { label: 'Spent + put away', value: spentAndPutAway },
       { label: 'Actually spent', value: actuallySpent },
     ],
-    summary: `In ${review.month} you have logged ${pounds(income)} of income. You spent ${pounds(actuallySpent)} and, counting ${pounds(putIntoPots)} put into pots, ${pounds(spentAndPutAway)} in total, ${totalSentence(spentAndPutAway, income)}.`,
+    summary: `In ${review.month} you have logged ${pounds(income)} of income. You spent ${pounds(actuallySpent)} and, counting ${pounds(parts.putIntoPots)} put into pots, ${pounds(spentAndPutAway)} in total, ${totalSentence(spentAndPutAway, income)}.`,
   };
 }
 

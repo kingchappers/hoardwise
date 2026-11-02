@@ -59,4 +59,14 @@ describe('HomeSummary', () => {
     renderSummary(summary({ incomeTotal: 0 }), figures({ income: 0 }));
     expect(screen.getByText('No income recorded yet this month.')).toBeInTheDocument();
   });
+
+  it('counts spending an overdrawn pot could not cover as expenses, so the parts add up', () => {
+    renderSummary(summary(), figures({
+      expensesOutsidePots: 50000, putIntoPots: 100000, unfundedPotSpending: 700000,
+      spentAndPutAway: 850000, actuallySpent: 1000000, income: 900000,
+    }));
+    expect(screen.getByText('Expenses £7,500.00')).toBeInTheDocument();
+    expect(screen.getByText('Put into pots £1,000.00')).toBeInTheDocument();
+    expect(screen.getByText('Spent + put away: £8,500.00')).toBeInTheDocument();
+  });
 });

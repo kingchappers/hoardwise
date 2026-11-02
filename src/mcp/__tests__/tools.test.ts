@@ -409,6 +409,20 @@ describe('chart_data', () => {
     expect(result.accessibleSummary).toContain('£62.34');
   });
 
+  it('month-summary parts add up to Spent + put away when a pot is overdrawn', async () => {
+    await addPot('user-a', 'cat-holidays');
+    await addTx('user-a', '2026-09-04', 'SET_ASIDE', 'cat-holidays', 2000);
+    await addTx('user-a', '2026-10-02', 'INCOME', 'cat-salary', 200000);
+    await addTx('user-a', '2026-10-03', 'EXPENSE', 'cat-groceries', 500);
+    await addTx('user-a', '2026-10-04', 'SET_ASIDE', 'cat-holidays', 1000);
+    await addTx('user-a', '2026-10-05', 'EXPENSE', 'cat-holidays', 10000);
+    const result = await data('chart_data', { view: 'month-summary' });
+    const value = (label: string): number => result.series.find((p: { label: string }) => p.label === label).value;
+    expect(value('Put into pots')).toBe(1000);
+    expect(value('Expenses')).toBe(7500);
+    expect(value('Expenses') + value('Put into pots')).toBe(value('Spent + put away'));
+  });
+
   it('month-summary says so when spent and put away is over income', async () => {
     await addTx('user-a', '2026-10-02', 'INCOME', 'cat-salary', 1000);
     await addTx('user-a', '2026-10-03', 'EXPENSE', 'cat-groceries', 1500);

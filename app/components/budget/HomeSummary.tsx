@@ -4,7 +4,7 @@ import { IconChevronRight } from '@tabler/icons-react';
 import { formatPence } from '~/lib/money';
 import { currentYearMonth } from '~/lib/months';
 import { leftToSpendSentence, type MonthSummary } from '~/lib/summary';
-import type { MonthFigures } from '../../../src/shared/monthFigures';
+import { outgoingsParts, type MonthFigures } from '../../../src/shared/monthFigures';
 import { OutgoingsBar } from './OutgoingsBar';
 
 const FIGURES_FAILED = "We couldn't load your put-away figures. Nothing has been lost.";
@@ -16,6 +16,24 @@ interface HomeSummaryProps {
   figures: MonthFigures | null;
   figuresFailed?: boolean;
   yearMonth: string;
+}
+
+function FiguresBar({ figures }: { figures: MonthFigures }) {
+  const parts = outgoingsParts(figures);
+  return (
+    <OutgoingsBar
+      incomeLabel="Income"
+      incomePence={figures.income}
+      incomeNoun="your income"
+      partsLabel="Where it went"
+      parts={[
+        { label: 'Expenses', pence: parts.expenses },
+        { label: 'Put into pots', pence: parts.putIntoPots },
+      ]}
+      totalLabel="Spent + put away"
+      secondary={{ label: 'Actually spent', pence: figures.actuallySpent, explainer: ACTUALLY_SPENT_EXPLAINER }}
+    />
+  );
 }
 
 export function HomeSummary({ summary, figures, figuresFailed = false, yearMonth }: HomeSummaryProps) {
@@ -31,18 +49,7 @@ export function HomeSummary({ summary, figures, figuresFailed = false, yearMonth
         </Text>
       )}
       {figures ? (
-        <OutgoingsBar
-          incomeLabel="Income"
-          incomePence={figures.income}
-          incomeNoun="your income"
-          partsLabel="Where it went"
-          parts={[
-            { label: 'Expenses', pence: figures.expensesOutsidePots },
-            { label: 'Put into pots', pence: figures.putIntoPots + figures.unfundedPotSpending },
-          ]}
-          totalLabel="Spent + put away"
-          secondary={{ label: 'Actually spent', pence: figures.actuallySpent, explainer: ACTUALLY_SPENT_EXPLAINER }}
-        />
+        <FiguresBar figures={figures} />
       ) : (
         <Text size="sm">{figuresFailed ? FIGURES_FAILED : FIGURES_LOADING}</Text>
       )}

@@ -64,6 +64,13 @@ export function computeMonthFigures(input: {
   };
 }
 
+export function outgoingsParts(figures: MonthFigures): { expenses: number; putIntoPots: number } {
+  return {
+    expenses: figures.expensesOutsidePots + figures.unfundedPotSpending,
+    putIntoPots: figures.putIntoPots,
+  };
+}
+
 export function plannedFigures(input: {
   categoryTargetsMonthly: number[];
   potMonthlyAmounts: (number | null)[];
