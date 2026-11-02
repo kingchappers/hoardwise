@@ -97,7 +97,7 @@ function HomeContent() {
   }), [transactions.data, categories.data, targets.data, yearMonth, viewingCurrentMonth, today, weekNeedsPreviousMonth, previousMonth.data]);
 
   const figures = useMemo((): MonthFigures | null => {
-    if (potsEnabled && (pots.isLoading || pots.error)) return null;
+    if (potsEnabled && (!pots.data || pots.error)) return null;
     const potCategoryIds = new Set(
       (categories.data ?? []).filter(c => c.type === 'POT').map(c => c.categoryId),
     );
@@ -107,7 +107,7 @@ function HomeContent() {
       if (month) potInputs.push(month);
     }
     return computeMonthFigures({ transactions: transactions.data ?? [], potCategoryIds, pots: potInputs });
-  }, [transactions.data, categories.data, pots.data, pots.isLoading, pots.error, potsEnabled, yearMonth]);
+  }, [transactions.data, categories.data, pots.data, pots.error, potsEnabled, yearMonth]);
 
   const nameFor = (id: string) =>
     categories.data?.find(c => c.categoryId === id)?.name ?? 'Unknown category';

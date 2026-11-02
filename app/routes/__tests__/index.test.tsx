@@ -21,6 +21,7 @@ const data = vi.hoisted(() => ({
   categories: [] as unknown[], targets: [] as unknown[], pots: [] as unknown[], transactions: [] as unknown[],
   potsCalls: [] as [string, boolean | undefined][],
   potsLoading: false,
+  potsPending: false,
   potsError: null as Error | null,
   // When set for a month, that month's transactions come from here instead of `transactions`.
   byMonth: {} as Record<string, unknown[]>,
@@ -34,7 +35,7 @@ vi.mock('~/lib/queries', () => ({
   useTargets: () => ({ data: data.targets, isLoading: false, error: null, refetch: vi.fn() }),
   usePots: (asOf: string, enabled?: boolean) => {
     data.potsCalls.push([asOf, enabled]);
-    return { data: data.pots, isLoading: data.potsLoading, error: data.potsError };
+    return { data: data.potsPending ? undefined : data.pots, isLoading: data.potsLoading, error: data.potsError };
   },
   useTransactions: (month: string, enabled?: boolean) => {
     data.txCalls.push([month, enabled]);
@@ -82,6 +83,7 @@ describe('Home', () => {
     data.transactions = [];
     data.potsCalls = [];
     data.potsLoading = false;
+    data.potsPending = false;
     data.potsError = null;
     data.byMonth = {};
     data.txCalls = [];
@@ -152,10 +154,19 @@ describe('Home', () => {
 
   it('shows a placeholder instead of the bar while pots load', () => {
     data.potsLoading = true;
+    data.potsPending = true;
     renderHome();
     expect(screen.getByText('Loading your figures…')).toBeInTheDocument();
     expect(screen.queryByText(/Spent \+ put away/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Put into pots/)).not.toBeInTheDocument();
+  });
+
+  it('shows the placeholder, not a zero, while pots are pending but not yet fetching', () => {
+    data.potsPending = true;
+    renderHome();
+    expect(screen.getByText('Loading your figures…')).toBeInTheDocument();
+    expect(screen.queryByText(/Put into pots/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Spent \+ put away/)).not.toBeInTheDocument();
   });
 
   it('says the put-away figures could not load when pots fail', () => {
@@ -168,6 +179,7 @@ describe('Home', () => {
 
   it('still shows the bar with nothing put into pots when pots are not enabled', () => {
     data.potsLoading = true;
+    data.potsPending = true;
     renderHome();
     fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
     fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
