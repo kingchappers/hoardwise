@@ -1,6 +1,7 @@
 // The month review behind the month_review tool. Rules: plugins/hoardwise/skills/budget/review.md.
 import type { Category, CategoryTarget, PotSummary, Transaction } from '../api/types';
 import { SPARSE_BELOW, median, monthHasData, monthlyTarget, regularAmount, sumToDay, throughDay, usualFor } from './calc';
+import { computeMonthFigures, type MonthFigures, type PotMonthInput } from '../shared/monthFigures';
 import { MAX_TEXT, clip } from './tools/shared';
 
 // review.md gives rules of thumb ("about half again", "a small minimum, such as £5",
@@ -63,6 +64,7 @@ export interface MonthReview {
   dataLevel: DataLevel;
   income: { logged: number; hasLogged: boolean; usual: number | null; regularAmount: number | null };
   spending: { total: number; usual: number | null };
+  figures: MonthFigures;
   categories: CategoryLine[];
   pots: PotLine[];
   notable: Notable[];
@@ -147,11 +149,21 @@ export function buildMonthReview(input: ReviewInput): MonthReview {
     dataLevel,
     income: { logged: income.thisMonth, hasLogged, usual: income.usual, regularAmount: regular },
     spending: { total: spending.thisMonth, usual: spending.usual },
+    // Whole month, because pot figures are whole-month aggregates and must cover the same period.
+    figures: computeMonthFigures({
+      transactions: wholeMonth,
+      potCategoryIds: new Set(categories.filter((c) => c.type === 'POT').map((c) => c.categoryId)),
+      pots: potMonthInputs(pots, month),
+    }),
     categories: categoryLines,
     pots: buildPotLines(pots, categories),
     notable,
     incomeQuestion: { ask: !hasLogged, suggestedAmount: hasLogged ? null : regular },
   };
+}
+
+function potMonthInputs(pots: PotSummary[], month: string): PotMonthInput[] {
+  return pots.flatMap((p) => p.months.filter((m) => m.yearMonth === month));
 }
 
 function buildCategoryLines(

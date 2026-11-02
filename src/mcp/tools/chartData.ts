@@ -1,7 +1,9 @@
-import { loadBudget, shiftMonth } from '../data';
+import type { PotSummary } from '../../api/types';
+import { outgoingsParts } from '../../shared/monthFigures';
+import { loadBudget, loadBudgetWithHistory, shiftMonth, type Budget } from '../data';
 import { buildMonthReview, type MonthReview } from '../review';
 import type { McpTool } from '../types';
-import { PRIVACY_NOTE, READ_ONLY, clip, monthIsTooFarAhead, monthOf, readMonth } from './shared';
+import { PRIVACY_NOTE, READ_ONLY, clip, monthIsTooFarAhead, monthOf, potsFor, readMonth } from './shared';
 
 const VIEWS = ['month-summary', 'category-share', 'monthly-trend', 'category-vs-target'] as const;
 type View = (typeof VIEWS)[number];
@@ -25,16 +27,26 @@ function nothingLogged(month: string): { series: Point[]; summary: string } {
   return { series: [], summary: `Nothing is logged yet for ${month}.` };
 }
 
+function totalSentence(spentAndPutAway: number, income: number): string {
+  const gap = Math.abs(income - spentAndPutAway);
+  if (spentAndPutAway > income) return `which is ${pounds(gap)} more than your income`;
+  if (spentAndPutAway < income) return `which is ${pounds(gap)} less than your income`;
+  return 'which matches your income';
+}
+
 function monthSummary(review: MonthReview): { series: Point[]; summary: string } {
   if (review.dataLevel === 'none') return nothingLogged(review.month);
-  const { logged } = review.income;
-  const spent = review.spending.total;
+  const { income, spentAndPutAway, actuallySpent } = review.figures;
+  const parts = outgoingsParts(review.figures);
   return {
     series: [
-      { label: 'Income', value: logged },
-      { label: 'Spending', value: spent },
+      { label: 'Income', value: income },
+      { label: 'Expenses', value: parts.expenses },
+      { label: 'Put into pots', value: parts.putIntoPots },
+      { label: 'Spent + put away', value: spentAndPutAway },
+      { label: 'Actually spent', value: actuallySpent },
     ],
-    summary: `In ${review.month} you have logged ${pounds(logged)} of income and ${pounds(spent)} of spending.`,
+    summary: `In ${review.month} you have logged ${pounds(income)} of income. You spent ${pounds(actuallySpent)} and, counting ${pounds(parts.putIntoPots)} put into pots, ${pounds(spentAndPutAway)} in total, ${totalSentence(spentAndPutAway, income)}.`,
   };
 }
 
@@ -75,11 +87,20 @@ function categoryVsTarget(review: MonthReview): { series: Point[]; summary: stri
   return { series, summary };
 }
 
+async function withPotHistory(
+  userId: string,
+  range: { from: string; to: string },
+  month: string,
+): Promise<{ budget: Budget; pots: PotSummary[] }> {
+  const budget = await loadBudgetWithHistory(userId, range);
+  return { budget, pots: potsFor(budget, month) };
+}
+
 export const chartDataTool: McpTool = {
   name: 'chart_data',
   title: 'Chart data',
   description:
-    'Gives figures ready to draw as a chart, with a plain sentence describing them: a month summary, spending by category, a monthly spending trend, or categories against their targets. Amounts are in pence (integers). Never includes individual transactions. Read-only.',
+    'Gives figures ready to draw as a chart, with a plain sentence describing them: a month summary (income, expenses, money put into pots, spent plus put away, and what was actually spent), spending by category, a monthly spending trend, or categories against their targets. Amounts are in pence (integers). Never includes individual transactions. Read-only.',
   access: 'read',
   inputSchema: {
     type: 'object',
@@ -106,18 +127,19 @@ export const chartDataTool: McpTool = {
       return { ok: false, message: 'month must be at most one month ahead' };
     }
 
-    const budget = await loadBudget(context.userId, {
-      from: shiftMonth(month, -Math.max(REVIEW_LOOKBACK, months - 1)),
-      to: month,
-    });
-    // No view draws pots, so the full history that pot balances need is never read.
+    const range = { from: shiftMonth(month, -Math.max(REVIEW_LOOKBACK, months - 1)), to: month };
+    // Only the month summary draws pots, so only it reads the full history that pot balances need.
+    const { budget, pots } =
+      view === 'month-summary'
+        ? await withPotHistory(context.userId, range, month)
+        : { budget: await loadBudget(context.userId, range), pots: [] };
     const review = buildMonthReview({
       month,
       now: context.now,
       categories: budget.categories,
       transactions: budget.transactions,
       targets: budget.targets,
-      pots: [],
+      pots,
     });
 
     const built = buildView(view, review, budget.transactions, month, months);

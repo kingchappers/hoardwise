@@ -146,12 +146,6 @@ html[data-text-size='largest'] .tab-label {
   }
 }
 
-/* The plan summary floats above the tab bar; at larger text it would cover the fields being edited. */
-html[data-text-size='large'] .plan-footer,
-html[data-text-size='largest'] .plan-footer {
-  position: static !important;
-}
-
 /* Segmented controls share one row. Tighter labels keep the last option from being cut off
    at the larger text sizes and on narrow screens. */
 .mantine-SegmentedControl-label {

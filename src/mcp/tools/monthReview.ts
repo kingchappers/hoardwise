@@ -48,7 +48,7 @@ export const monthReviewTool: McpTool = {
   name: 'month_review',
   title: 'Month review',
   description:
-    "Summarises how a month is going: income, spending against what is usual and any targets, pots, and anything worth mentioning. Defaults to the current month. Amounts are in pence (integers). Read-only.",
+    "Summarises how a month is going: income, spending against what is usual and any targets, pots, and anything worth mentioning. The figures field separates expenses, money put into pots, and spending paid from pots, and gives two spending totals: spent plus put away, and actually spent. Defaults to the current month. Amounts are in pence (integers). Read-only.",
   access: 'read',
   inputSchema: {
     type: 'object',

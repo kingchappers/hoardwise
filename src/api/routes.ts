@@ -2,6 +2,7 @@ import type { Router } from './router';
 import { getCategories, createCategory, updateCategory, deleteCategory } from './categories';
 import { getTransactions, createTransaction, deleteTransaction, updateTransaction } from './transactions';
 import { getTargets, upsertTarget, deleteTarget } from './targets';
+import { getExpectedIncome, putExpectedIncome, deleteExpectedIncome } from './expectedIncome';
 import { getPots, putPot } from './pots';
 import { archivePot, unarchivePot } from './potArchive';
 import { getTransactionsRange } from './transactionsRange';
@@ -27,6 +28,9 @@ export function registerCoreRoutes(router: Router): void {
   router.get('/api/targets', getTargets);
   router.put('/api/targets/{categoryId}', upsertTarget);
   router.delete('/api/targets/{categoryId}', deleteTarget);
+  router.get('/api/expected-income', getExpectedIncome);
+  router.put('/api/expected-income', putExpectedIncome);
+  router.delete('/api/expected-income', deleteExpectedIncome);
   router.get('/api/pots', getPots);
   router.put('/api/pots/{categoryId}', putPot);
   router.post('/api/pots/{categoryId}/archive', archivePot);

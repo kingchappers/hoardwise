@@ -20,6 +20,9 @@ vi.mock('~/components/recurring/RecurringForm', () => ({ RecurringForm: () => nu
 const data = vi.hoisted(() => ({
   categories: [] as unknown[], targets: [] as unknown[], pots: [] as unknown[], transactions: [] as unknown[],
   potsCalls: [] as [string, boolean | undefined][],
+  potsLoading: false,
+  potsPending: false,
+  potsError: null as Error | null,
   // When set for a month, that month's transactions come from here instead of `transactions`.
   byMonth: {} as Record<string, unknown[]>,
   txCalls: [] as [string, boolean | undefined][],
@@ -32,7 +35,7 @@ vi.mock('~/lib/queries', () => ({
   useTargets: () => ({ data: data.targets, isLoading: false, error: null, refetch: vi.fn() }),
   usePots: (asOf: string, enabled?: boolean) => {
     data.potsCalls.push([asOf, enabled]);
-    return { data: data.pots, isLoading: false, error: null };
+    return { data: data.potsPending ? undefined : data.pots, isLoading: data.potsLoading, error: data.potsError };
   },
   useTransactions: (month: string, enabled?: boolean) => {
     data.txCalls.push([month, enabled]);
@@ -79,6 +82,9 @@ describe('Home', () => {
     data.pots = [];
     data.transactions = [];
     data.potsCalls = [];
+    data.potsLoading = false;
+    data.potsPending = false;
+    data.potsError = null;
     data.byMonth = {};
     data.txCalls = [];
     data.recurring = [];
@@ -131,6 +137,53 @@ describe('Home', () => {
     expect(screen.getByRole('heading', { name: 'Pots' })).toBeInTheDocument();
     expect(screen.getByText('£120.00')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'See all pots' })).toHaveAttribute('href', '/plan?tab=pots');
+  });
+
+  it('counts money put into pots for the viewed month on the summary', () => {
+    data.categories = [
+      { categoryId: 'cat-holidays', name: 'Holidays', type: 'POT', group: 'SINKING_FUNDS', icon: '✈️', isDefault: true, createdAt: '' },
+    ];
+    data.pots = [{
+      categoryId: 'cat-holidays', monthlyAmount: null, goalAmount: null, autoAmountNow: 0, balance: 12000,
+      thisMonth: { setAside: 0, autoAdded: 0, takeOut: 0, spent: 0 },
+      months: [{ yearMonth: thisMonth, opening: 2000, setAside: 7000, autoAdded: 3000, takeOut: 0, spent: 0, closing: 12000 }],
+    }];
+    renderHome();
+    expect(screen.getByText('Put into pots £100.00')).toBeInTheDocument();
+  });
+
+  it('shows a placeholder instead of the bar while pots load', () => {
+    data.potsLoading = true;
+    data.potsPending = true;
+    renderHome();
+    expect(screen.getByText('Loading your figures…')).toBeInTheDocument();
+    expect(screen.queryByText(/Spent \+ put away/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Put into pots/)).not.toBeInTheDocument();
+  });
+
+  it('shows the placeholder, not a zero, while pots are pending but not yet fetching', () => {
+    data.potsPending = true;
+    renderHome();
+    expect(screen.getByText('Loading your figures…')).toBeInTheDocument();
+    expect(screen.queryByText(/Put into pots/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Spent \+ put away/)).not.toBeInTheDocument();
+  });
+
+  it('says the put-away figures could not load when pots fail', () => {
+    data.potsError = new Error('boom');
+    renderHome();
+    expect(screen.getByText("We couldn't load your put-away figures. Nothing has been lost.")).toBeInTheDocument();
+    expect(screen.queryByText(/Put into pots/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Spent \+ put away/)).not.toBeInTheDocument();
+  });
+
+  it('still shows the bar with nothing put into pots when pots are not enabled', () => {
+    data.potsLoading = true;
+    data.potsPending = true;
+    renderHome();
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+    expect(screen.getByText('Put into pots £0.00')).toBeInTheDocument();
   });
 
   it('does not show a Pots section when there are no pots', () => {
@@ -208,7 +261,7 @@ describe('Home left to spend', () => {
 
   it('shows everything spent, including spending without a target', () => {
     renderHome();
-    expect(screen.getByText('Spent this month').parentElement).toHaveTextContent('£212.40');
+    expect(screen.getByText('Actually spent: £212.40')).toBeInTheDocument();
   });
 
   it('leads each category row with what is left', () => {
@@ -255,8 +308,8 @@ describe('Home left to spend', () => {
     renderHome();
     fireEvent.click(screen.getByRole('button', { name: 'Previous month' }));
     const name = monthName(lastMonth);
-    expect(screen.getByText(`Income in ${name}`)).toBeInTheDocument();
-    expect(screen.getByText(`Spent in ${name}`)).toBeInTheDocument();
+    expect(screen.getByText('Income')).toBeInTheDocument();
+    expect(screen.getByText('Where it went')).toBeInTheDocument();
     expect(screen.getByText(`Nothing logged in ${name}.`)).toBeInTheDocument();
   });
 });
@@ -273,7 +326,7 @@ describe('Home without targets', () => {
 
   it('shows only what was spent', () => {
     renderHome();
-    expect(screen.getByText('Spent this month').parentElement).toHaveTextContent('£45.00');
+    expect(screen.getByText('Actually spent: £45.00')).toBeInTheDocument();
     expect(screen.queryByText(/left to spend|over so far/)).not.toBeInTheDocument();
     expect(screen.queryByText('Other spending (no budget)')).not.toBeInTheDocument();
   });
@@ -293,7 +346,7 @@ describe('Home without targets', () => {
     unmount();
     renderHome();
     expect(screen.queryByText(/Budgets are optional/)).not.toBeInTheDocument();
-    expect(screen.getByText('Spent this month')).toBeInTheDocument();
+    expect(screen.getByText(/^Actually spent:/)).toBeInTheDocument();
   });
 
   it('still shows the card when storage cannot be read', () => {
@@ -471,6 +524,6 @@ describe('Home money ahead', () => {
   it('puts income beside the headline, and says when none has arrived', () => {
     renderHome();
     expect(screen.getByText('No income recorded yet this month.')).toBeInTheDocument();
-    expect(screen.getByText(/^Income /)).toBeInTheDocument();
+    expect(screen.getByText('Income')).toBeInTheDocument();
   });
 });

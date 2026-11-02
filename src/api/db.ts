@@ -3,6 +3,7 @@ export const catSk = (categoryId: string): string => `CAT#${categoryId}`;
 export const txnSk = (yearMonth: string, transactionId: string): string =>
   `TXN#${yearMonth}#${transactionId}`;
 export const targetSk = (categoryId: string): string => `TARGET#${categoryId}`;
+export const expectedIncomeSk = 'SETTING#expectedIncome';
 export const recurringSk = (recurringId: string): string => `RECUR#${recurringId}`;
 export const potSk = (categoryId: string): string => `POT#${categoryId}`;
 export const accountSk = (accountId: string): string => `ACCOUNT#${accountId}`;

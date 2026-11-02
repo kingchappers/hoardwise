@@ -31,6 +31,16 @@ export function parsePounds(input: string): ParseResult {
   return { ok: true, pence };
 }
 
+export function parseOptionalPounds(
+  text: string,
+): { ok: true; pence: number | null } | { ok: false; message: string } {
+  if (text.trim() === '') return { ok: true, pence: null };
+  const parsed = parsePounds(text);
+  if (!parsed.ok) return { ok: false, message: parsed.message };
+  if (parsed.pence <= 0) return { ok: false, message: 'Enter an amount greater than zero' };
+  return { ok: true, pence: parsed.pence };
+}
+
 // A balance, unlike a transaction amount, is allowed to be zero (an account
 // paid off or closed) or negative (an overdrawn current account). It accepts
 // an optional leading '-' for that reason; everything else matches parsePounds.

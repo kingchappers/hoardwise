@@ -2,10 +2,41 @@ import { Link } from 'react-router';
 import { Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import { IconChevronRight } from '@tabler/icons-react';
 import { formatPence } from '~/lib/money';
-import { currentYearMonth, monthPhrase } from '~/lib/months';
+import { currentYearMonth } from '~/lib/months';
 import { leftToSpendSentence, type MonthSummary } from '~/lib/summary';
+import { outgoingsParts, type MonthFigures } from '../../../src/shared/monthFigures';
+import { OutgoingsBar } from './OutgoingsBar';
 
-export function HomeSummary({ summary, yearMonth }: { summary: MonthSummary; yearMonth: string }) {
+const FIGURES_FAILED = "We couldn't load your put-away figures. Nothing has been lost.";
+const FIGURES_LOADING = 'Loading your figures…';
+const ACTUALLY_SPENT_EXPLAINER = "Money that left your accounts: your expenses plus spending paid out of pots. Pot spending comes out of what you put away earlier, so it isn't added to 'Spent + put away'.";
+
+interface HomeSummaryProps {
+  summary: MonthSummary;
+  figures: MonthFigures | null;
+  figuresFailed?: boolean;
+  yearMonth: string;
+}
+
+function FiguresBar({ figures }: { figures: MonthFigures }) {
+  const parts = outgoingsParts(figures);
+  return (
+    <OutgoingsBar
+      incomeLabel="Income"
+      incomePence={figures.income}
+      incomeNoun="your income"
+      partsLabel="Where it went"
+      parts={[
+        { label: 'Expenses', pence: parts.expenses },
+        { label: 'Put into pots', pence: parts.putIntoPots, negativeLabel: 'Taken out of pots' },
+      ]}
+      totalLabel="Spent + put away"
+      secondary={{ label: 'Actually spent', pence: figures.actuallySpent, explainer: ACTUALLY_SPENT_EXPLAINER }}
+    />
+  );
+}
+
+export function HomeSummary({ summary, figures, figuresFailed = false, yearMonth }: HomeSummaryProps) {
   const sentence = leftToSpendSentence(summary, yearMonth);
   return (
     <Stack gap="xs">
@@ -17,14 +48,11 @@ export function HomeSummary({ summary, yearMonth }: { summary: MonthSummary; yea
             : 'This counts only categories with a budget.'}
         </Text>
       )}
-      <Group justify="space-between">
-        <Text>Spent {monthPhrase(yearMonth)}</Text>
-        <Text fw={600}>{formatPence(summary.spentTotal)}</Text>
-      </Group>
-      <Group justify="space-between">
-        <Text>Income {monthPhrase(yearMonth)}</Text>
-        <Text fw={600}>{formatPence(summary.incomeTotal)}</Text>
-      </Group>
+      {figures ? (
+        <FiguresBar figures={figures} />
+      ) : (
+        <Text size="sm">{figuresFailed ? FIGURES_FAILED : FIGURES_LOADING}</Text>
+      )}
       {summary.incomeTotal === 0 && yearMonth === currentYearMonth() && (
         <Text size="sm">No income recorded yet this month.</Text>
       )}

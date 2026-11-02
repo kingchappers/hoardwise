@@ -1,5 +1,7 @@
 import { useSearchParams } from 'react-router';
 import { Stack, Tabs, Title } from '@mantine/core';
+import { PlanDraftProvider } from '~/components/plan/PlanDraftContext';
+import { PlanSummary } from '~/components/plan/PlanSummary';
 import { DefaultLayout } from '~/components/layout/DefaultLayout';
 import { useDocumentTitle } from '~/hooks/useDocumentTitle';
 import { isPlanTab, normalisePlanTab, PLAN_TABS, type PlanTab } from '~/lib/planTabs';
@@ -19,6 +21,7 @@ function PlanContent() {
   return (
     <Stack>
       <Title order={1} size="h3">Plan</Title>
+      <PlanSummary />
       <Tabs
         value={tab}
         // Moving between tabs drops anything meant for the tab you left.
@@ -43,7 +46,9 @@ export const meta: Route.MetaFunction = () => [{ title: pageTitle('Plan') }];
 export default function Plan() {
   return (
     <DefaultLayout>
-      <PlanContent />
+      <PlanDraftProvider>
+        <PlanContent />
+      </PlanDraftProvider>
     </DefaultLayout>
   );
 }

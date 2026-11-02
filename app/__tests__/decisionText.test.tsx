@@ -1,7 +1,9 @@
-import { describe, it } from 'vitest';
+import { describe, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { MemoryRouter } from 'react-router';
+vi.mock('~/lib/queries', () => ({ useSavePot: () => ({ mutate: vi.fn() }) }));
+
 import { AccountHistorySheet } from '~/components/accounts/AccountHistorySheet';
 import { AccountRow } from '~/components/accounts/AccountRow';
 import { CategoryProgressRow } from '~/components/budget/CategoryProgressRow';

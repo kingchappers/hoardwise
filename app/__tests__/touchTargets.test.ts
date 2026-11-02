@@ -49,8 +49,4 @@ describe('touch targets', () => {
   it('hides only the app name from a phone header at larger text sizes', () => {
     expect(block("html[data-text-size='largest'] .app-wordmark")).toMatch(/display:\s*none/);
   });
-
-  it('lets the plan summary scroll with the page at larger text sizes', () => {
-    expect(block("html[data-text-size='largest'] .plan-footer")).toMatch(/position:\s*static/);
-  });
 });

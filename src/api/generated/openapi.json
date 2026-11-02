@@ -594,6 +594,129 @@
         }
       }
     },
+    "/api/expected-income": {
+      "get": {
+        "tags": [
+          "targets"
+        ],
+        "summary": "Get expected monthly income",
+        "description": "Returns the household member's expected monthly income, or `null` when none is set. It is a personal planning figure, not a transaction.",
+        "operationId": "getExpectedIncome",
+        "x-token-access": "read",
+        "responses": {
+          "200": {
+            "description": "The expected income, or `null`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpectedIncome"
+                },
+                "example": {
+                  "amount": 500000
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "targets"
+        ],
+        "summary": "Set expected monthly income",
+        "description": "Creates or replaces the expected monthly income. The amount is a positive integer of pence (or cents), at most 1000000000.",
+        "operationId": "putExpectedIncome",
+        "x-token-access": "write",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectedIncomeInput"
+              },
+              "example": {
+                "amount": 500000
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored expected income.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpectedIncome"
+                },
+                "example": {
+                  "amount": 500000
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "targets"
+        ],
+        "summary": "Clear expected monthly income",
+        "description": "Removes the expected monthly income. Clearing when none is set is not an error. The response has `amount: null`.",
+        "operationId": "deleteExpectedIncome",
+        "x-token-access": "write",
+        "responses": {
+          "200": {
+            "description": "The expected income is cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpectedIncome"
+                },
+                "example": {
+                  "amount": null
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/api/transactions": {
       "get": {
         "tags": [
@@ -3675,6 +3798,36 @@
           },
           "period": {
             "$ref": "#/components/schemas/TargetPeriod"
+          }
+        }
+      },
+      "ExpectedIncomeInput": {
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000000,
+            "description": "Positive integer pence (or cents)."
+          }
+        }
+      },
+      "ExpectedIncome": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "amount"
+        ],
+        "properties": {
+          "amount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Expected monthly income in pence (or cents), or null when none is set."
           }
         }
       },

@@ -4,6 +4,7 @@ import { categoryLabel } from '~/lib/categoryIcons';
 import { formatPence } from '~/lib/money';
 import { goalPercent, thisMonthSummary } from '~/lib/pots';
 import type { Category, PotSummary } from '~/lib/types';
+import { PotPlanField } from './PotPlanField';
 
 export interface PotRowProps {
   pot: PotSummary;
@@ -57,6 +58,7 @@ export function PotRow({ pot, category, onSetAside, onOpen }: PotRowProps) {
           </Button>
         )}
       </Group>
+      {!pot.archivedAt && <PotPlanField pot={pot} name={category.name} />}
     </Card>
   );
 }

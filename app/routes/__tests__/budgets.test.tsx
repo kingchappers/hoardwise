@@ -20,13 +20,11 @@ const state = vi.hoisted(() => ({
   setTarget: vi.fn(),
   removeTarget: vi.fn(),
   undoableDelete: vi.fn(),
-  lastMonth: [] as { type: string; amount: number }[],
 }));
 
 vi.mock('~/lib/queries', () => ({
   useCategories: () => ({ data: categories, isLoading: false, error: null, refetch: vi.fn() }),
   useTargets: () => ({ data: state.targets, isLoading: false, error: null, refetch: vi.fn() }),
-  useTransactions: () => ({ data: state.lastMonth }),
   useSetTarget: () => ({ mutate: state.setTarget, isPending: false }),
   useDeleteTarget: () => ({ mutateAsync: state.removeTarget }),
 }));
@@ -43,7 +41,6 @@ beforeEach(() => {
   state.setTarget.mockReset();
   state.removeTarget.mockReset();
   state.undoableDelete.mockReset();
-  state.lastMonth = [];
 });
 
 function groceriesRow(): HTMLElement {
@@ -161,39 +158,10 @@ describe('Removing a target', () => {
   });
 });
 
-describe('Budgets plan footer', () => {
-  it('shows what is planned on its own when there is no income yet', () => {
+describe('Budgets tab', () => {
+  it('no longer renders the plan footer', () => {
     renderPage();
-    expect(screen.getByTestId('plan-footer')).toHaveTextContent('Planned £300.00');
-    expect(screen.getByTestId('plan-footer')).not.toHaveTextContent('income');
-  });
-
-  it("compares the plan with last month's income", () => {
-    state.lastMonth = [{ type: 'INCOME', amount: 240000 }, { type: 'EXPENSE', amount: 5000 }];
-    renderPage();
-    expect(screen.getByTestId('plan-footer')).toHaveTextContent(
-      "Planned £300.00 of £2,400.00 last month's income · £2,100.00 not yet planned",
-    );
-  });
-
-  it('says so when the plan is more than income', () => {
-    state.lastMonth = [{ type: 'INCOME', amount: 20000 }];
-    renderPage();
-    expect(screen.getByTestId('plan-footer')).toHaveTextContent('£100.00 more than that');
-  });
-
-  it('counts weekly targets as a month', () => {
-    state.targets = [{ categoryId: 'g', targetAmount: 7000, period: 'WEEKLY', updatedAt: '' }];
-    state.lastMonth = [{ type: 'INCOME', amount: 1000000 }];
-    renderPage();
-    const days = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-    const planned = Math.round((7000 * days) / 7) / 100;
-    expect(screen.getByTestId('plan-footer')).toHaveTextContent(`Planned £${planned.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`);
-  });
-
-  it('stays in view while scrolling', () => {
-    renderPage();
-    expect(screen.getByTestId('plan-footer')).toHaveStyle({ position: 'sticky' });
+    expect(screen.queryByTestId('plan-footer')).not.toBeInTheDocument();
   });
 });
 

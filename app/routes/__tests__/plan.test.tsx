@@ -7,6 +7,7 @@ import { MemoryRouter, useLocation } from 'react-router';
 vi.mock('~/components/layout/DefaultLayout', () => ({
   DefaultLayout: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
+vi.mock('~/components/plan/PlanSummary', () => ({ PlanSummary: () => <div>Plan summary</div> }));
 vi.mock('../budgets', () => ({ BudgetsContent: () => <div>Budgets content</div> }));
 vi.mock('../pots', () => ({ PotsContent: () => <div>Pots content</div> }));
 vi.mock('../recurring', () => ({ RecurringContent: () => <div>Recurring content</div> }));
@@ -45,6 +46,11 @@ describe('Plan page', () => {
   ])('opens the %s tab from the address', (tab, content) => {
     renderPlan(`/plan?tab=${tab}`);
     expect(screen.getByText(content)).toBeInTheDocument();
+  });
+
+  it('shows the plan summary above whichever tab is open', () => {
+    renderPlan('/plan?tab=pots');
+    expect(screen.getByText('Plan summary')).toBeInTheDocument();
   });
 
   it('falls back to Budgets for a tab it does not know', () => {

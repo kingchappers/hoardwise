@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { useAuth } from '~/lib/auth';
 import { useProtectedApi } from '~/hooks/useProtectedApi';
 import { ApiError } from '~/lib/apiError';
+import { expectedIncome } from '../../src/shared/monthFigures';
 import { createApi, type AccessTokenInput, type RecurringInput, type TransactionInput } from './api';
 import { clearPendingEntry, OFFLINE_QUEUE_KEY, pendingRowsForMonth, type PendingMap } from './pendingEntries';
 import type { TrashEntityType, TrashRef } from './trash';
@@ -11,6 +12,7 @@ import type { AccessToken, Account, Category, CategoryGroup, CategoryTarget, Pot
 export const queryKeys = {
   categories: ['categories'] as const,
   targets: ['targets'] as const,
+  expectedIncome: ['expectedIncome'] as const,
   transactions: (yearMonth: string) => ['transactions', yearMonth] as const,
   transactionsRange: (from: string, to: string) => ['transactionsRange', from, to] as const,
   recurring: ['recurring'] as const,
@@ -72,6 +74,42 @@ export function useTargets() {
     queryKey: queryKeys.targets,
     queryFn: () => api.getTargets(),
     enabled,
+  });
+}
+
+export function useExpectedIncome() {
+  const api = useApi();
+  const enabled = useAuthReady();
+  return useQuery({
+    queryKey: queryKeys.expectedIncome,
+    queryFn: async () => ({ amount: await api.getExpectedIncome() }),
+    enabled,
+  });
+}
+
+// Unknown (null) until the saved override has loaded, or if it failed to load:
+// showing the history figure first could flash a number the user has overridden.
+export function useExpectedIncomeValue(regular: number | null): number | null {
+  const { data, isPending, isError } = useExpectedIncome();
+  if (isPending || isError) return null;
+  return expectedIncome(data?.amount ?? null, regular);
+}
+
+export function useSetExpectedIncome() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (amount: number) => api.setExpectedIncome(amount),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.expectedIncome }),
+  });
+}
+
+export function useClearExpectedIncome() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.clearExpectedIncome(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.expectedIncome }),
   });
 }
 
