@@ -149,8 +149,9 @@ export function buildMonthReview(input: ReviewInput): MonthReview {
     dataLevel,
     income: { logged: income.thisMonth, hasLogged, usual: income.usual, regularAmount: regular },
     spending: { total: spending.thisMonth, usual: spending.usual },
+    // Whole month, because pot figures are whole-month aggregates and must cover the same period.
     figures: computeMonthFigures({
-      transactions: current,
+      transactions: wholeMonth,
       potCategoryIds: new Set(categories.filter((c) => c.type === 'POT').map((c) => c.categoryId)),
       pots: potMonthInputs(pots, month),
     }),

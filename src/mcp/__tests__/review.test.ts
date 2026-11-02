@@ -91,6 +91,29 @@ describe('buildMonthReview figures', () => {
     expect(figures.spentAndPutAway).toBe(15000);
   });
 
+  it('covers the whole month in figures while income and spending stop at today', () => {
+    const result = review({
+      month: '2026-10',
+      now: new Date('2026-10-10T12:00:00Z'),
+      categories: [cat('food'), cat('holiday', 'POT'), cat('salary', 'INCOME')],
+      transactions: [
+        tx('2026-10-02', 'EXPENSE', 'food', 5000),
+        tx('2026-10-25', 'INCOME', 'salary', 200000),
+        tx('2026-10-28', 'SET_ASIDE', 'holiday', 10000),
+      ],
+      pots: [
+        pot('holiday', {
+          months: [{ yearMonth: '2026-10', opening: 0, setAside: 10000, autoAdded: 0, takeOut: 0, spent: 0, closing: 10000 }],
+        }),
+      ],
+    });
+    expect(result.figures.income).toBe(200000);
+    expect(result.figures.putIntoPots).toBe(10000);
+    expect(result.figures.leftAfterPots).toBe(result.figures.income - result.figures.spentAndPutAway);
+    expect(result.income.logged).toBe(0);
+    expect(result.spending.total).toBe(5000);
+  });
+
   it('keeps spending.total as the sum of expenses', () => {
     expect(october().spending.total).toBe(8000);
   });
