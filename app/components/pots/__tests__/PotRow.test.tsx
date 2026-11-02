@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { theme } from '~/root';
+vi.mock('~/lib/queries', () => ({ useSavePot: () => ({ mutate: vi.fn() }) }));
+
 import { PotRow } from '../PotRow';
 import type { Category, PotSummary } from '~/lib/types';
 

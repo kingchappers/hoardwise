@@ -8,22 +8,14 @@ import { ResponsiveSheet } from '~/components/layout/ResponsiveSheet';
 import { useInlineCategoryRename } from '~/hooks/useInlineCategoryRename';
 import { NAMES } from '~/lib/glossary';
 import { categoryLabel } from '~/lib/categoryIcons';
-import { formatPence, formatPencePlain, parsePounds } from '~/lib/money';
+import { formatPence, formatPencePlain, parseOptionalPounds } from '~/lib/money';
 import { currentYearMonth, formatMonthLabel } from '~/lib/months';
 import { useSavePot } from '~/lib/queries';
 import type { Category, PotSummary } from '~/lib/types';
 import { ArchivePotSection } from './ArchivePotSection';
 import { PotTrend } from './PotTrend';
 
-export function parseOptionalPounds(
-  text: string,
-): { ok: true; pence: number | null } | { ok: false; message: string } {
-  if (text.trim() === '') return { ok: true, pence: null };
-  const parsed = parsePounds(text);
-  if (!parsed.ok) return { ok: false, message: parsed.message };
-  if (parsed.pence <= 0) return { ok: false, message: 'Enter an amount greater than zero' };
-  return { ok: true, pence: parsed.pence };
-}
+export { parseOptionalPounds };
 
 function formatBalance(pence: number): string {
   return pence < 0 ? `−${formatPence(-pence)}` : formatPence(pence);

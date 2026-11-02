@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActionIcon, Button, Card, Group, Input, Loader, Menu, Paper, SegmentedControl, Stack, Text, TextInput, Title } from '@mantine/core';
+import { ActionIcon, Button, Card, Group, Input, Loader, Menu, SegmentedControl, Stack, Text, TextInput, Title } from '@mantine/core';
 import { IconDots, IconTrash } from '@tabler/icons-react';
 import { LoadError } from '~/components/layout/LoadError';
 import { DefaultLayout } from '~/components/layout/DefaultLayout';
@@ -9,12 +9,10 @@ import { categoryLabel } from '~/lib/categoryIcons';
 import { groupCategories } from '~/lib/categoryGroups';
 import { formatPencePlain, parsePounds } from '~/lib/money';
 import { targetLabel } from '~/lib/trash';
-import { useCategories, useDeleteTarget, useSetTarget, useTargets, useTransactions } from '~/lib/queries';
-import { describePlan, planTargets } from '~/lib/targetPlan';
-import { currentYearMonth, shiftMonth } from '~/lib/months';
+import { useCategories, useDeleteTarget, useSetTarget, useTargets } from '~/lib/queries';
 import { NAMES } from '~/lib/glossary';
 import { TermHelp } from '~/components/layout/TermHelp';
-import type { Category, CategoryTarget, TargetPeriod } from '~/lib/types';
+import type { Category, TargetPeriod } from '~/lib/types';
 import { pageTitle } from '~/lib/pageTitle';
 import type { Route } from './+types/budgets';
 import { redirect } from 'react-router';
@@ -125,26 +123,6 @@ function TargetRow({ category, amountPence, period }: {
   );
 }
 
-function PlanFooter({ targets }: { targets: CategoryTarget[] }) {
-  const current = currentYearMonth();
-  const lastMonth = useTransactions(shiftMonth(current, -1));
-  const income = (lastMonth.data ?? []).filter(t => t.type === 'INCOME').reduce((sum, t) => sum + t.amount, 0);
-  const plan = planTargets(targets, income, current);
-  return (
-    <Paper
-      withBorder
-      p="sm"
-      role="status"
-      data-testid="plan-footer"
-      className="plan-footer"
-      // Sits just above the phone tab bar.
-      style={{ position: 'sticky', bottom: 'calc(var(--tab-bar-height) + 12px)', zIndex: 50 }}
-    >
-      <Text fw={600}>{describePlan(plan)}</Text>
-    </Paper>
-  );
-}
-
 export function BudgetsContent() {
   const categories = useCategories();
   const targets = useTargets();
@@ -179,7 +157,6 @@ export function BudgetsContent() {
           })}
         </div>
       ))}
-      <PlanFooter targets={targets.data ?? []} />
     </Stack>
   );
 }
