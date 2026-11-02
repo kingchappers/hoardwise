@@ -20,6 +20,8 @@ vi.mock('~/components/recurring/RecurringForm', () => ({ RecurringForm: () => nu
 const data = vi.hoisted(() => ({
   categories: [] as unknown[], targets: [] as unknown[], pots: [] as unknown[], transactions: [] as unknown[],
   potsCalls: [] as [string, boolean | undefined][],
+  potsLoading: false,
+  potsError: null as Error | null,
   // When set for a month, that month's transactions come from here instead of `transactions`.
   byMonth: {} as Record<string, unknown[]>,
   txCalls: [] as [string, boolean | undefined][],
@@ -32,7 +34,7 @@ vi.mock('~/lib/queries', () => ({
   useTargets: () => ({ data: data.targets, isLoading: false, error: null, refetch: vi.fn() }),
   usePots: (asOf: string, enabled?: boolean) => {
     data.potsCalls.push([asOf, enabled]);
-    return { data: data.pots, isLoading: false, error: null };
+    return { data: data.pots, isLoading: data.potsLoading, error: data.potsError };
   },
   useTransactions: (month: string, enabled?: boolean) => {
     data.txCalls.push([month, enabled]);
@@ -79,6 +81,8 @@ describe('Home', () => {
     data.pots = [];
     data.transactions = [];
     data.potsCalls = [];
+    data.potsLoading = false;
+    data.potsError = null;
     data.byMonth = {};
     data.txCalls = [];
     data.recurring = [];
@@ -144,6 +148,30 @@ describe('Home', () => {
     }];
     renderHome();
     expect(screen.getByText('Put into pots £100.00')).toBeInTheDocument();
+  });
+
+  it('shows a placeholder instead of the bar while pots load', () => {
+    data.potsLoading = true;
+    renderHome();
+    expect(screen.getByText('Loading your figures…')).toBeInTheDocument();
+    expect(screen.queryByText(/Spent \+ put away/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Put into pots/)).not.toBeInTheDocument();
+  });
+
+  it('says the put-away figures could not load when pots fail', () => {
+    data.potsError = new Error('boom');
+    renderHome();
+    expect(screen.getByText("We couldn't load your put-away figures. Nothing has been lost.")).toBeInTheDocument();
+    expect(screen.queryByText(/Put into pots/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Spent \+ put away/)).not.toBeInTheDocument();
+  });
+
+  it('still shows the bar with nothing put into pots when pots are not enabled', () => {
+    data.potsLoading = true;
+    renderHome();
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+    expect(screen.getByText('Put into pots £0.00')).toBeInTheDocument();
   });
 
   it('does not show a Pots section when there are no pots', () => {

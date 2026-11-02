@@ -28,7 +28,7 @@ import { useCategories, usePots, useRecurring, useTargets, useTransactions, useT
 import { billsBeforePayday } from '~/lib/moneyAhead';
 import { usePreferences } from '~/lib/preferences';
 import { pageTitle } from '~/lib/pageTitle';
-import { computeMonthFigures, type PotMonthInput } from '../../src/shared/monthFigures';
+import { computeMonthFigures, type MonthFigures, type PotMonthInput } from '../../src/shared/monthFigures';
 import type { Route } from './+types/_index';
 
 function categoryTransactionsUrl(yearMonth: string, categoryId: string): string {
@@ -96,7 +96,8 @@ function HomeContent() {
       : undefined,
   }), [transactions.data, categories.data, targets.data, yearMonth, viewingCurrentMonth, today, weekNeedsPreviousMonth, previousMonth.data]);
 
-  const figures = useMemo(() => {
+  const figures = useMemo((): MonthFigures | null => {
+    if (potsEnabled && (pots.isLoading || pots.error)) return null;
     const potCategoryIds = new Set(
       (categories.data ?? []).filter(c => c.type === 'POT').map(c => c.categoryId),
     );
@@ -106,7 +107,7 @@ function HomeContent() {
       if (month) potInputs.push(month);
     }
     return computeMonthFigures({ transactions: transactions.data ?? [], potCategoryIds, pots: potInputs });
-  }, [transactions.data, categories.data, pots.data, yearMonth]);
+  }, [transactions.data, categories.data, pots.data, pots.isLoading, pots.error, potsEnabled, yearMonth]);
 
   const nameFor = (id: string) =>
     categories.data?.find(c => c.categoryId === id)?.name ?? 'Unknown category';
@@ -133,7 +134,7 @@ function HomeContent() {
       <VisuallyHidden><Title order={1}>Home</Title></VisuallyHidden>
       <DueRecurringCard />
       <MonthHeader yearMonth={yearMonth} onChange={setYearMonth} />
-      <HomeSummary summary={summary} figures={figures} yearMonth={yearMonth} />
+      <HomeSummary summary={summary} figures={figures} figuresFailed={potsEnabled && Boolean(pots.error)} yearMonth={yearMonth} />
       {moneyAhead && <MoneyAhead ahead={moneyAhead} />}
       <WelcomeBackCard />
       <WhatsChanged

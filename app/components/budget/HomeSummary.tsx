@@ -7,15 +7,18 @@ import { leftToSpendSentence, type MonthSummary } from '~/lib/summary';
 import type { MonthFigures } from '../../../src/shared/monthFigures';
 import { OutgoingsBar } from './OutgoingsBar';
 
+const FIGURES_FAILED = "We couldn't load your put-away figures. Nothing has been lost.";
+const FIGURES_LOADING = 'Loading your figures…';
 const ACTUALLY_SPENT_EXPLAINER = "Money that left your accounts: your expenses plus spending paid out of pots. Pot spending comes out of what you put away earlier, so it isn't added to 'Spent + put away'.";
 
 interface HomeSummaryProps {
   summary: MonthSummary;
-  figures: MonthFigures;
+  figures: MonthFigures | null;
+  figuresFailed?: boolean;
   yearMonth: string;
 }
 
-export function HomeSummary({ summary, figures, yearMonth }: HomeSummaryProps) {
+export function HomeSummary({ summary, figures, figuresFailed = false, yearMonth }: HomeSummaryProps) {
   const sentence = leftToSpendSentence(summary, yearMonth);
   return (
     <Stack gap="xs">
@@ -27,18 +30,22 @@ export function HomeSummary({ summary, figures, yearMonth }: HomeSummaryProps) {
             : 'This counts only categories with a budget.'}
         </Text>
       )}
-      <OutgoingsBar
-        incomeLabel="Income"
-        incomePence={figures.income}
-        incomeNoun="your income"
-        partsLabel="Where it went"
-        parts={[
-          { label: 'Expenses', pence: figures.expensesOutsidePots },
-          { label: 'Put into pots', pence: figures.putIntoPots + figures.unfundedPotSpending },
-        ]}
-        totalLabel="Spent + put away"
-        secondary={{ label: 'Actually spent', pence: figures.actuallySpent, explainer: ACTUALLY_SPENT_EXPLAINER }}
-      />
+      {figures ? (
+        <OutgoingsBar
+          incomeLabel="Income"
+          incomePence={figures.income}
+          incomeNoun="your income"
+          partsLabel="Where it went"
+          parts={[
+            { label: 'Expenses', pence: figures.expensesOutsidePots },
+            { label: 'Put into pots', pence: figures.putIntoPots + figures.unfundedPotSpending },
+          ]}
+          totalLabel="Spent + put away"
+          secondary={{ label: 'Actually spent', pence: figures.actuallySpent, explainer: ACTUALLY_SPENT_EXPLAINER }}
+        />
+      ) : (
+        <Text size="sm">{figuresFailed ? FIGURES_FAILED : FIGURES_LOADING}</Text>
+      )}
       {summary.incomeTotal === 0 && yearMonth === currentYearMonth() && (
         <Text size="sm">No income recorded yet this month.</Text>
       )}
