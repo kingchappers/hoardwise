@@ -6,6 +6,8 @@ export interface OutgoingsBarProps {
   incomeLabel: string;
   incomePence: number | null;
   incomeNoun: string;
+  // Shown in place of the income figure while it is not known for a reason other than "not set".
+  incomePlaceholder?: string;
   partsLabel: string;
   parts: { label: string; pence: number }[];
   totalLabel: string;
@@ -52,12 +54,17 @@ function ComparisonLine({ difference, incomeNoun }: { difference: number; income
   );
 }
 
+function incomeText(incomePence: number | null, placeholder: string | undefined): string {
+  if (placeholder) return placeholder;
+  return incomePence === null ? 'Not set' : formatPence(incomePence);
+}
+
 export function OutgoingsBar(props: OutgoingsBarProps) {
   const { incomePence, parts, secondary } = props;
   const partsTotal = parts.reduce((sum, p) => sum + p.pence, 0);
   const scale = Math.max(incomePence ?? 0, partsTotal);
   const partsSum = partsTotal || 1;
-  const showComparison = incomePence !== null && incomePence > 0;
+  const showComparison = !props.incomePlaceholder && incomePence !== null && incomePence > 0;
 
   return (
     <Stack gap="xs">
@@ -66,7 +73,7 @@ export function OutgoingsBar(props: OutgoingsBarProps) {
         <Bar width={widthPercent(incomePence ?? 0, scale)} testId="income-bar">
           <Box style={{ flex: 1, background: 'var(--mantine-color-default-border)' }} />
         </Bar>
-        <Text fw={600} mt={2}>{incomePence === null ? 'Not set' : formatPence(incomePence)}</Text>
+        <Text fw={600} mt={2}>{incomeText(incomePence, props.incomePlaceholder)}</Text>
         {props.note && <Text size="sm" c="dimmed">{props.note}</Text>}
       </div>
 

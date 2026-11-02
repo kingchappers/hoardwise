@@ -63,8 +63,8 @@ describe('PotPlanField', () => {
     expect(screen.getByTestId('drafts')).toHaveTextContent('{"holiday":2500}');
   });
 
-  it('saves the monthly amount with the pot goal and clears the draft', async () => {
-    const { user } = renderField();
+  it('saves the monthly amount with the pot goal and clears the draft once the saved amount arrives', async () => {
+    const { user, rerender } = renderField();
     const field = screen.getByLabelText('Planned per month');
     await user.clear(field);
     await user.type(field, '25');
@@ -75,6 +75,8 @@ describe('PotPlanField', () => {
         input: { monthlyAmount: 2500, goalAmount: 50000, autoContribute: false, month: expect.stringMatching(/^\d{4}-\d{2}$/) },
       },
     );
+    expect(screen.getByTestId('drafts')).toHaveTextContent('{"holiday":2500}');
+    rerender(<Host show p={pot({ monthlyAmount: 2500 })} />);
     expect(screen.getByTestId('drafts')).toHaveTextContent('{}');
   });
 

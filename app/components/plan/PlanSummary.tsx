@@ -6,11 +6,18 @@ import { currentYearMonth, shiftMonth } from '~/lib/months';
 import { useCategories, useExpectedIncomeValue, usePots, useTargets, useTransactionsRange } from '~/lib/queries';
 import { normaliseTargetToMonth } from '~/lib/summary';
 import { plannedFigures } from '../../../src/shared/monthFigures';
-import { ExpectedIncome } from './ExpectedIncome';
+import { ExpectedIncome, type HistoryStatus } from './ExpectedIncome';
 import { usePlanDrafts } from './PlanDraftContext';
 
 const HISTORY_MONTHS = 6;
 const POT_NOTE = "Spending you expect to do from a pot is counted inside that pot's planned amount, not on top of it.";
+
+function incomePlaceholder(income: number | null, history: HistoryStatus): string | undefined {
+  if (income !== null) return undefined;
+  if (history === 'loading') return 'Working out expected income…';
+  if (history === 'error') return 'Unavailable';
+  return undefined;
+}
 
 function PlanBody() {
   const month = currentYearMonth();
@@ -21,6 +28,7 @@ function PlanBody() {
   const { drafts } = usePlanDrafts();
   const regular = regularIncomeFromHistory(history.data ?? [], month);
   const income = useExpectedIncomeValue(regular);
+  const historyStatus: HistoryStatus = history.isError ? 'error' : history.isPending ? 'loading' : 'ready';
 
   if (categories.isError || targets.isError || pots.isError) {
     return (
@@ -49,6 +57,7 @@ function PlanBody() {
         incomeLabel="Expected income"
         incomePence={income}
         incomeNoun="expected income"
+        incomePlaceholder={incomePlaceholder(income, historyStatus)}
         partsLabel="What you've planned"
         parts={[
           { label: 'Budgeted spending', pence: figures.budgetedSpending },
@@ -57,7 +66,7 @@ function PlanBody() {
         totalLabel="Total budgeted"
         note={POT_NOTE}
       />
-      <ExpectedIncome regular={regular} />
+      <ExpectedIncome regular={regular} history={historyStatus} />
     </Stack>
   );
 }

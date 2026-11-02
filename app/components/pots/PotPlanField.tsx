@@ -13,9 +13,17 @@ export function PotPlanField({ pot, name }: { pot: PotSummary; name?: string }) 
   const save = useSavePot();
   const [value, setValue] = useState(pot.monthlyAmount !== null ? formatPencePlain(pot.monthlyAmount) : '');
   const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [awaiting, setAwaiting] = useState<{ pence: number | null } | null>(null);
   const categoryId = pot.categoryId;
 
   useEffect(() => () => clearDraft(categoryId), [categoryId, clearDraft]);
+
+  // The draft stays until the refetched pot carries the saved amount, so the total never falls back to the old one.
+  useEffect(() => {
+    if (!awaiting || pot.monthlyAmount !== awaiting.pence) return;
+    clearDraft(categoryId);
+    setAwaiting(null);
+  }, [awaiting, pot.monthlyAmount, categoryId, clearDraft]);
 
   const parsed = parseOptionalPounds(value);
   const error = parsed.ok ? null : parsed.message;
@@ -23,6 +31,7 @@ export function PotPlanField({ pot, name }: { pot: PotSummary; name?: string }) 
   function change(next: string): void {
     setValue(next);
     setSaveState('idle');
+    setAwaiting(null);
     const result = parseOptionalPounds(next);
     if (result.ok) setDraft(categoryId, result.pence);
     else clearDraft(categoryId);
@@ -45,7 +54,7 @@ export function PotPlanField({ pot, name }: { pot: PotSummary; name?: string }) 
       {
         onSuccess: () => {
           setSaveState('saved');
-          clearDraft(categoryId);
+          setAwaiting({ pence: result.pence });
         },
         onError: (saveError: Error) => {
           console.error(`Failed to save the planned amount for pot ${categoryId}:`, saveError);

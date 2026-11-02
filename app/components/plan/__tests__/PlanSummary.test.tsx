@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
   potsLoading: false,
   targetsError: false,
   save: vi.fn(),
+  historyPending: false,
+  historyError: false,
 }));
 
 vi.mock('~/lib/queries', () => ({
@@ -28,12 +30,21 @@ vi.mock('~/lib/queries', () => ({
     isError: false,
     refetch: vi.fn(),
   }),
-  useTransactionsRange: () => ({ data: [] }),
+  useTransactionsRange: () => ({
+    data: state.historyPending || state.historyError ? undefined : [],
+    isPending: state.historyPending,
+    isError: state.historyError,
+  }),
   useExpectedIncomeValue: () => state.income,
   useExpectedIncome: () => ({ data: { amount: null }, isPending: false, isError: false, refetch: vi.fn() }),
   useSetExpectedIncome: () => ({ mutate: vi.fn() }),
   useClearExpectedIncome: () => ({ mutate: vi.fn() }),
-  useSavePot: () => ({ mutate: state.save }),
+  useSavePot: () => ({
+    mutate: (vars: unknown, callbacks: { onSuccess?: () => void }) => {
+      state.save(vars);
+      callbacks.onSuccess?.();
+    },
+  }),
 }));
 
 import { PlanSummary } from '../PlanSummary';
@@ -67,6 +78,8 @@ beforeEach(() => {
   state.potsLoading = false;
   state.targetsError = false;
   state.save.mockReset();
+  state.historyPending = false;
+  state.historyError = false;
 });
 
 function Page({ showField = true }: { showField?: boolean }) {
@@ -141,5 +154,40 @@ describe('PlanSummary', () => {
 
     rerender(<Page showField={false} />);
     expect(screen.getByText('Total budgeted: £5,393.78')).toBeInTheDocument();
+  });
+
+  it('keeps the new total through a save while the pots refetch is still catching up', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<Page />);
+    await user.clear(screen.getByLabelText('Planned per month'));
+    await user.type(screen.getByLabelText('Planned per month'), '1100');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(state.save).toHaveBeenCalled();
+    expect(screen.getByText('Total budgeted: £5,493.78')).toBeInTheDocument();
+    expect(screen.queryByText('Total budgeted: £5,393.78')).not.toBeInTheDocument();
+
+    state.pots = [pot('holiday', 110000), pot('car', 41479)];
+    rerender(<Page />);
+    expect(screen.getByText('Total budgeted: £5,493.78')).toBeInTheDocument();
+  });
+
+  it('shows a placeholder, not Not set, while income history loads', () => {
+    state.income = null;
+    state.historyPending = true;
+    render(<Page showField={false} />);
+    expect(screen.getByText('Working out expected income…')).toBeInTheDocument();
+    expect(screen.queryByText('Not set')).not.toBeInTheDocument();
+    expect(screen.queryByText(/more than expected income|left after pots/)).not.toBeInTheDocument();
+    expect(screen.getByText('Total budgeted: £5,393.78')).toBeInTheDocument();
+  });
+
+  it('says the history could not be loaded and still offers Set your own', () => {
+    state.income = null;
+    state.historyError = true;
+    render(<Page showField={false} />);
+    expect(screen.getByText("We couldn't load your income history.")).toBeInTheDocument();
+    expect(screen.queryByText('Not set')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set your own' })).toBeInTheDocument();
   });
 });
