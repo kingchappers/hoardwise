@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Group, Stack, Text, TextInput } from '@mantine/core';
+import { LoadError } from '~/components/layout/LoadError';
 import { SaveStatus, type SaveState } from '~/components/layout/SaveStatus';
 import { formatPencePlain, parsePounds } from '~/lib/money';
 import { useClearExpectedIncome, useExpectedIncome, useSetExpectedIncome } from '~/lib/queries';
@@ -11,11 +12,12 @@ function sourceLine(override: number | null, regular: number | null): string {
 }
 
 export function ExpectedIncome({ regular }: { regular: number | null }) {
-  const { data } = useExpectedIncome();
+  const { data, isPending, isError, refetch } = useExpectedIncome();
   const override = data?.amount ?? null;
   const [value, setValue] = useState(override !== null ? formatPencePlain(override) : '');
   const [error, setError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [lastAction, setLastAction] = useState<'save' | 'clear'>('save');
   const setIncome = useSetExpectedIncome();
   const clearIncome = useClearExpectedIncome();
 
@@ -27,6 +29,7 @@ export function ExpectedIncome({ regular }: { regular: number | null }) {
     const parsed = parsePounds(value);
     if (!parsed.ok) { setError(parsed.message); return; }
     setError(null);
+    setLastAction('save');
     setSaveState('saving');
     setIncome.mutate(parsed.pence, {
       onSuccess: () => setSaveState('saved'),
@@ -39,6 +42,7 @@ export function ExpectedIncome({ regular }: { regular: number | null }) {
 
   function clear(): void {
     setError(null);
+    setLastAction('clear');
     setSaveState('saving');
     clearIncome.mutate(undefined, {
       onSuccess: () => setSaveState('idle'),
@@ -53,6 +57,9 @@ export function ExpectedIncome({ regular }: { regular: number | null }) {
     setValue(next);
     setSaveState('idle');
   }
+
+  if (isPending) return <Text size="sm">Loading your expected income…</Text>;
+  if (isError) return <LoadError thing="expected income" onRetry={() => { void refetch(); }} />;
 
   return (
     <Stack gap="xs">
@@ -69,7 +76,7 @@ export function ExpectedIncome({ regular }: { regular: number | null }) {
         )}
       </Group>
       <Group justify="flex-end" mih={24}>
-        <SaveStatus state={saveState} onRetry={save} />
+        <SaveStatus state={saveState} onRetry={lastAction === 'clear' ? clear : save} />
       </Group>
     </Stack>
   );
