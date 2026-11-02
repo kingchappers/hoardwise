@@ -8,10 +8,17 @@ import { currentYearMonth } from '~/lib/months';
 import { useSavePot } from '~/lib/queries';
 import type { PotSummary } from '~/lib/types';
 
+function automaticNote(autoOn: boolean, pence: number | null | undefined): string | null {
+  if (!autoOn || pence === undefined) return null;
+  if (pence === null) return 'Automatic contributions are on. Saving a blank amount turns automatic contributions off.';
+  return 'Automatic contributions are on, so saving keeps adding the new amount every month.';
+}
+
 export function PotPlanField({ pot, name }: { pot: PotSummary; name?: string }) {
   const { setDraft, clearDraft } = usePlanDrafts();
   const save = useSavePot();
   const [value, setValue] = useState(pot.monthlyAmount !== null ? formatPencePlain(pot.monthlyAmount) : '');
+  const [edited, setEdited] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [awaiting, setAwaiting] = useState<{ pence: number | null } | null>(null);
   const categoryId = pot.categoryId;
@@ -23,13 +30,21 @@ export function PotPlanField({ pot, name }: { pot: PotSummary; name?: string }) 
     if (!awaiting || pot.monthlyAmount !== awaiting.pence) return;
     clearDraft(categoryId);
     setAwaiting(null);
+    setEdited(false);
   }, [awaiting, pot.monthlyAmount, categoryId, clearDraft]);
+
+  useEffect(() => {
+    if (edited) return;
+    setValue(pot.monthlyAmount !== null ? formatPencePlain(pot.monthlyAmount) : '');
+  }, [edited, pot.monthlyAmount]);
 
   const parsed = parseOptionalPounds(value);
   const error = parsed.ok ? null : parsed.message;
+  const autoNote = automaticNote(pot.autoAmountNow > 0, parsed.ok ? parsed.pence : undefined);
 
   function change(next: string): void {
     setValue(next);
+    setEdited(true);
     setSaveState('idle');
     setAwaiting(null);
     const result = parseOptionalPounds(next);
@@ -83,9 +98,7 @@ export function PotPlanField({ pot, name }: { pot: PotSummary; name?: string }) 
           Save
         </Button>
       </Group>
-      {pot.autoAmountNow > 0 && (
-        <Text size="sm" c="dimmed">Automatic contributions are on, so saving keeps adding the new amount every month.</Text>
-      )}
+      {autoNote && <Text size="sm" c="dimmed">{autoNote}</Text>}
       <Group justify="flex-end" mih={24}>
         <SaveStatus state={saveState} onRetry={send} />
       </Group>

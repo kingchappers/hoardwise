@@ -113,4 +113,33 @@ describe('PotPlanField', () => {
     rerender(<Host show={false} />);
     expect(screen.getByTestId('drafts')).toHaveTextContent('{}');
   });
+
+  it('follows the saved amount when it changes and nothing has been typed', () => {
+    const { rerender } = renderField();
+    expect(screen.getByLabelText('Planned per month')).toHaveValue('100.00');
+    rerender(<Host show p={pot({ monthlyAmount: 4000 })} />);
+    expect(screen.getByLabelText('Planned per month')).toHaveValue('40.00');
+  });
+
+  it('keeps what the person typed when the saved amount changes underneath', async () => {
+    const { user, rerender } = renderField();
+    const field = screen.getByLabelText('Planned per month');
+    await user.clear(field);
+    await user.type(field, '25');
+    rerender(<Host show p={pot({ monthlyAmount: 4000 })} />);
+    expect(screen.getByLabelText('Planned per month')).toHaveValue('25');
+  });
+
+  it('says saving a blank turns automatic contributions off when the field is blank', async () => {
+    const { user } = renderField(pot({ autoAmountNow: 10000 }));
+    await user.clear(screen.getByLabelText('Planned per month'));
+    expect(screen.getByText(/turns automatic contributions off/)).toBeInTheDocument();
+    expect(screen.queryByText(/keeps adding the new amount/)).not.toBeInTheDocument();
+  });
+
+  it('says saving keeps adding the new amount when the field has an amount', () => {
+    renderField(pot({ autoAmountNow: 10000 }));
+    expect(screen.getByText(/saving keeps adding the new amount every month/)).toBeInTheDocument();
+    expect(screen.queryByText(/turns automatic contributions off/)).not.toBeInTheDocument();
+  });
 });
