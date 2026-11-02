@@ -154,6 +154,7 @@ export function createStore(now = new Date()) {
       case 'GET /api/pots': return { status: 200, json: { pots: state.pots } };
       case 'GET /api/recurring': return { status: 200, json: { recurring: state.recurring } };
       case 'GET /api/accounts': return { status: 200, json: { accounts: state.accounts } };
+      case 'GET /api/expected-income': return { status: 200, json: { amount: 215000 } };
       case 'GET /api/trash': return { status: 200, json: { items: [] } };
       case 'GET /api/tokens': return { status: 200, json: { tokens: [] } };
       case 'GET /api/transactions': {
