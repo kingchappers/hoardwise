@@ -3,19 +3,32 @@ import { Button, Group, Stack, Text, TextInput } from '@mantine/core';
 import { LoadError } from '~/components/layout/LoadError';
 import { SaveStatus, type SaveState } from '~/components/layout/SaveStatus';
 import { formatPencePlain, parsePounds } from '~/lib/money';
+import type { RegularIncomeReason } from '~/lib/expectedIncome';
 import { useClearExpectedIncome, useExpectedIncome, useSetExpectedIncome } from '~/lib/queries';
 
 export type HistoryStatus = 'ready' | 'loading' | 'error';
 
-function sourceLine(override: number | null, regular: number | null, history: HistoryStatus): string {
+function sourceLine(
+  override: number | null,
+  regular: number | null,
+  history: HistoryStatus,
+  reason: RegularIncomeReason,
+): string {
   if (override !== null) return 'Set by you';
-  if (regular !== null) return 'Average of your last 3 months';
+  if (regular !== null) return 'Your usual monthly income, from recent months';
   if (history === 'loading') return 'Working out your usual income…';
   if (history === 'error') return "We couldn't load your income history.";
+  if (reason === 'varies') return 'Your income varies too much to work out a usual figure';
   return 'Not enough history yet';
 }
 
-export function ExpectedIncome({ regular, history = 'ready' }: { regular: number | null; history?: HistoryStatus }) {
+interface ExpectedIncomeProps {
+  regular: number | null;
+  history?: HistoryStatus;
+  reason?: RegularIncomeReason;
+}
+
+export function ExpectedIncome({ regular, history = 'ready', reason = 'too-few-months' }: ExpectedIncomeProps) {
   const { data, isPending, isError, refetch } = useExpectedIncome();
   const override = data?.amount ?? null;
   const [value, setValue] = useState(override !== null ? formatPencePlain(override) : '');
@@ -67,7 +80,7 @@ export function ExpectedIncome({ regular, history = 'ready' }: { regular: number
 
   return (
     <Stack gap="xs">
-      <Text size="sm">{sourceLine(override, regular, history)}</Text>
+      <Text size="sm">{sourceLine(override, regular, history, reason)}</Text>
       <Group align="flex-end" gap="sm">
         <TextInput
           aria-label="Expected income" placeholder="0.00" inputMode="decimal"

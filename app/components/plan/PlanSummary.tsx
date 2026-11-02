@@ -1,7 +1,7 @@
 import { Paper, Stack, Text } from '@mantine/core';
 import { OutgoingsBar } from '~/components/budget/OutgoingsBar';
 import { LoadError } from '~/components/layout/LoadError';
-import { regularIncomeFromHistory } from '~/lib/expectedIncome';
+import { regularIncomeStatus } from '~/lib/expectedIncome';
 import { currentYearMonth, shiftMonth } from '~/lib/months';
 import { useCategories, useExpectedIncome, useExpectedIncomeValue, usePots, useTargets, useTransactionsRange } from '~/lib/queries';
 import { normaliseTargetToMonth } from '~/lib/summary';
@@ -38,7 +38,7 @@ function PlanBody() {
   const pots = usePots(month);
   const history = useTransactionsRange(shiftMonth(month, -HISTORY_MONTHS), shiftMonth(month, -1));
   const { drafts } = usePlanDrafts();
-  const regular = regularIncomeFromHistory(history.data ?? [], month);
+  const { amount: regular, reason } = regularIncomeStatus(history.data ?? [], month);
   const income = useExpectedIncomeValue(regular);
   const override = useExpectedIncome();
   const historyStatus = queryStatus(history);
@@ -80,7 +80,7 @@ function PlanBody() {
         totalLabel="Total budgeted"
         note={POT_NOTE}
       />
-      <ExpectedIncome regular={regular} history={historyStatus} />
+      <ExpectedIncome regular={regular} history={historyStatus} reason={reason} />
     </Stack>
   );
 }

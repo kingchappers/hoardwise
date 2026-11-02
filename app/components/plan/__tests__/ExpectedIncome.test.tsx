@@ -40,8 +40,8 @@ vi.mock('~/lib/queries', () => ({
 
 import { ExpectedIncome } from '../ExpectedIncome';
 
-function renderIt(regular: number | null) {
-  render(<MantineProvider><ExpectedIncome regular={regular} /></MantineProvider>);
+function renderIt(regular: number | null, reason?: 'ok' | 'too-few-months' | 'varies') {
+  render(<MantineProvider><ExpectedIncome regular={regular} reason={reason} /></MantineProvider>);
   return userEvent.setup();
 }
 
@@ -64,9 +64,20 @@ describe('ExpectedIncome', () => {
     expect(screen.queryByRole('button', { name: 'Use my usual' })).toBeNull();
   });
 
+  it('says the income varies too much when there is history but no usual figure', () => {
+    renderIt(null, 'varies');
+    expect(screen.getByText('Your income varies too much to work out a usual figure')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Set your own' })).toBeTruthy();
+  });
+
+  it('says there is not enough history when there are too few months', () => {
+    renderIt(null, 'too-few-months');
+    expect(screen.getByText('Not enough history yet')).toBeTruthy();
+  });
+
   it('shows the history source when there is no override', () => {
     renderIt(200000);
-    expect(screen.getByText('Average of your last 3 months')).toBeTruthy();
+    expect(screen.getByText('Your usual monthly income, from recent months')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Use my usual' })).toBeNull();
   });
 
@@ -127,7 +138,7 @@ describe('ExpectedIncome', () => {
     expect(screen.getByText('Loading your expected income…')).toBeTruthy();
     expect(screen.queryByRole('textbox')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Set your own' })).toBeNull();
-    expect(screen.queryByText('Average of your last 3 months')).toBeNull();
+    expect(screen.queryByText('Your usual monthly income, from recent months')).toBeNull();
   });
 
   it('shows an error with Try again and no form when the override failed to load', async () => {

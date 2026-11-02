@@ -1,7 +1,18 @@
 import { monthHasData, regularAmount } from '../../src/mcp/calc';
 import type { Transaction } from './types';
 
+export type RegularIncomeReason = 'ok' | 'too-few-months' | 'varies';
+
+const MIN_MONTHS = 3;
+
 export function regularIncomeFromHistory(transactions: Transaction[], month: string): number | null {
+  return regularIncomeStatus(transactions, month).amount;
+}
+
+export function regularIncomeStatus(
+  transactions: Transaction[],
+  month: string,
+): { amount: number | null; reason: RegularIncomeReason } {
   const byMonth = new Map<string, Transaction[]>();
   for (const t of transactions) {
     const key = t.date.slice(0, 7);
@@ -16,5 +27,8 @@ export function regularIncomeFromHistory(transactions: Transaction[], month: str
     incomeByMonth.set(key, total);
     if (monthHasData(rows, key)) monthsWithData.add(key);
   }
-  return regularAmount(incomeByMonth, month, monthsWithData);
+  const amount = regularAmount(incomeByMonth, month, monthsWithData);
+  if (amount !== null) return { amount, reason: 'ok' };
+  const monthsWithIncome = [...monthsWithData].filter((key) => (incomeByMonth.get(key) ?? 0) > 0);
+  return { amount: null, reason: monthsWithIncome.length < MIN_MONTHS ? 'too-few-months' : 'varies' };
 }
