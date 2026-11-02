@@ -4,6 +4,7 @@ import { MantineProvider } from '@mantine/core';
 import { HomeSummary } from '../HomeSummary';
 import { currentYearMonth } from '~/lib/months';
 import type { MonthSummary } from '~/lib/summary';
+import type { MonthFigures } from '../../../../src/shared/monthFigures';
 
 function summary(overrides: Partial<MonthSummary> = {}): MonthSummary {
   return {
@@ -13,8 +14,16 @@ function summary(overrides: Partial<MonthSummary> = {}): MonthSummary {
   };
 }
 
-function renderSummary(value: MonthSummary) {
-  return render(<MantineProvider><HomeSummary summary={value} yearMonth={currentYearMonth()} /></MantineProvider>);
+function figures(overrides: Partial<MonthFigures> = {}): MonthFigures {
+  return {
+    income: 260000, expensesOutsidePots: 95000, putIntoPots: 20000, unfundedPotSpending: 0,
+    spentAndPutAway: 115000, actuallySpent: 95000, leftAfterPots: 145000,
+    ...overrides,
+  };
+}
+
+function renderSummary(value: MonthSummary, monthFigures: MonthFigures = figures()) {
+  return render(<MantineProvider><HomeSummary summary={value} figures={monthFigures} yearMonth={currentYearMonth()} /></MantineProvider>);
 }
 
 describe('HomeSummary', () => {
@@ -32,5 +41,22 @@ describe('HomeSummary', () => {
   it('still says what it counts when nothing else was spent', () => {
     renderSummary(summary({ spentUnbudgeted: 0, spentTotal: 10000 }));
     expect(screen.getByText('This counts only categories with a budget.')).toBeInTheDocument();
+  });
+
+  it('shows spent plus put away and actually spent from the month figures', () => {
+    renderSummary(summary());
+    expect(screen.getByText('Spent + put away: £1,150.00')).toBeInTheDocument();
+    expect(screen.getByText('Actually spent: £950.00')).toBeInTheDocument();
+    expect(screen.getByText('£1,450.00 left after pots')).toBeInTheDocument();
+  });
+
+  it('says how far outgoings run past income', () => {
+    renderSummary(summary(), figures({ expensesOutsidePots: 380000, spentAndPutAway: 400000, leftAfterPots: -140000 }));
+    expect(screen.getByText('£1,400.00 more than your income')).toBeInTheDocument();
+  });
+
+  it('still says when no income is recorded this month', () => {
+    renderSummary(summary({ incomeTotal: 0 }), figures({ income: 0 }));
+    expect(screen.getByText('No income recorded yet this month.')).toBeInTheDocument();
   });
 });
