@@ -14,6 +14,8 @@ const state = vi.hoisted(() => ({
   save: vi.fn(),
   historyPending: false,
   historyError: false,
+  overridePending: false,
+  overrideError: false,
 }));
 
 vi.mock('~/lib/queries', () => ({
@@ -35,8 +37,13 @@ vi.mock('~/lib/queries', () => ({
     isPending: state.historyPending,
     isError: state.historyError,
   }),
-  useExpectedIncomeValue: () => state.income,
-  useExpectedIncome: () => ({ data: { amount: null }, isPending: false, isError: false, refetch: vi.fn() }),
+  useExpectedIncomeValue: () => (state.overridePending || state.overrideError ? null : state.income),
+  useExpectedIncome: () => ({
+    data: state.overridePending || state.overrideError ? undefined : { amount: null },
+    isPending: state.overridePending,
+    isError: state.overrideError,
+    refetch: vi.fn(),
+  }),
   useSetExpectedIncome: () => ({ mutate: vi.fn() }),
   useClearExpectedIncome: () => ({ mutate: vi.fn() }),
   useSavePot: () => ({
@@ -80,6 +87,8 @@ beforeEach(() => {
   state.save.mockReset();
   state.historyPending = false;
   state.historyError = false;
+  state.overridePending = false;
+  state.overrideError = false;
 });
 
 function Page({ showField = true }: { showField?: boolean }) {
@@ -189,5 +198,28 @@ describe('PlanSummary', () => {
     expect(screen.getByText("We couldn't load your income history.")).toBeInTheDocument();
     expect(screen.queryByText('Not set')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Set your own' })).toBeInTheDocument();
+  });
+
+  it('shows a placeholder, not Not set, while the saved expected income loads', () => {
+    state.income = null;
+    state.overridePending = true;
+    render(<Page showField={false} />);
+    expect(screen.getByText('Working out expected income…')).toBeInTheDocument();
+    expect(screen.queryByText('Not set')).not.toBeInTheDocument();
+    expect(screen.queryByText(/more than expected income|left after pots/)).not.toBeInTheDocument();
+  });
+
+  it('says Unavailable, not Not set, when the saved expected income failed to load', () => {
+    state.income = null;
+    state.overrideError = true;
+    render(<Page showField={false} />);
+    expect(screen.getByText('Unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('Not set')).not.toBeInTheDocument();
+  });
+
+  it('shows Not set only when the saved figure and the history have both settled with nothing', () => {
+    state.income = null;
+    render(<Page showField={false} />);
+    expect(screen.getByText('Not set')).toBeInTheDocument();
   });
 });
