@@ -351,6 +351,7 @@ describe('route table', () => {
       '/api/accounts',
       '/api/categories',
       '/api/docs/agents',
+      '/api/expected-income',
       '/api/openapi.json',
       '/api/pots',
       '/api/recurring',
