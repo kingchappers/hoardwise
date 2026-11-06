@@ -89,6 +89,13 @@ export class DynamoStore implements Store {
       assignments.push(`#d${index} = if_not_exists(#d${index}, :d${index})`);
     });
 
+    const conditions: string[] = opts.mustExist || opts.ifEquals ? [MUST_BE_PRESENT] : [];
+    Object.entries(opts.ifEquals ?? {}).forEach(([name, value], index) => {
+      names[`#c${index}`] = name;
+      values[`:c${index}`] = value;
+      conditions.push(`#c${index} = :c${index}`);
+    });
+
     try {
       const result = await this.client.send(new UpdateCommand({
         TableName: this.table,
@@ -96,7 +103,7 @@ export class DynamoStore implements Store {
         UpdateExpression: `SET ${assignments.join(', ')}`,
         ExpressionAttributeNames: names,
         ExpressionAttributeValues: values,
-        ...conditional(opts.mustExist ? MUST_BE_PRESENT : undefined),
+        ...conditional(conditions.length > 0 ? conditions.join(' AND ') : undefined),
         ReturnValues: 'ALL_NEW',
       }));
       return result.Attributes as Item;

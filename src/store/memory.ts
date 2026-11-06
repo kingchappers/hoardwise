@@ -1,4 +1,4 @@
-import { planPatch } from './patch';
+import { matchesAll, planPatch } from './patch';
 import {
   ConditionFailedError, type Item, type Key, type PatchOptions, type QueryOptions, type Store, type TxOp,
 } from './types';
@@ -38,6 +38,7 @@ export class MemoryStore implements Store {
     const plan = planPatch(fields, opts.defaults);
     const stored = this.rowOf(key);
     if (stored === undefined && opts.mustExist) throw new ConditionFailedError();
+    if (!matchesAll(stored, opts.ifEquals)) throw new ConditionFailedError();
 
     const current: Attributes = stored ?? {};
     const defaults = plan.defaults.filter(([name]) => current[name] === undefined);

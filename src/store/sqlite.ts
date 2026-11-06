@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { planPatch } from './patch';
+import { matchesAll, planPatch } from './patch';
 import {
   ConditionFailedError, type Item, type Key, type PatchOptions, type QueryOptions, type Store, type TxOp,
 } from './types';
@@ -93,6 +93,7 @@ export class SqliteStore implements Store {
       if (stored === undefined && opts.mustExist) throw new ConditionFailedError();
 
       const current: Record<string, unknown> = stored === undefined ? {} : JSON.parse(stored);
+      if (!matchesAll(stored === undefined ? undefined : current, opts.ifEquals)) throw new ConditionFailedError();
       const defaults = plan.defaults.filter(([name]) => current[name] === undefined);
       this.write({ ...Object.fromEntries(defaults), ...current, ...Object.fromEntries(plan.fields), PK: key.PK, SK: key.SK });
       return this.toItem(key.PK, key.SK, this.readData(key) as string);
