@@ -285,6 +285,91 @@ describe('a style deleted mid-update', () => {
   });
 });
 
+describe('a style renamed mid-update', () => {
+  class RenameAfterRead extends MemoryStore {
+    afterQuery: (() => Promise<void>) | undefined;
+    override async query(pk: string, opts?: Parameters<MemoryStore['query']>[1]) {
+      const rows = await super.query(pk, opts);
+      const hook = this.afterQuery;
+      this.afterQuery = undefined;
+      if (hook) await hook();
+      return rows;
+    }
+  }
+
+  async function racingRename(): Promise<RenameAfterRead> {
+    const racing = new RenameAfterRead();
+    await save(racing, 'One');
+    racing.afterQuery = async () => { await save(racing, 'Two', { renameFrom: 'One' }); };
+    return racing;
+  }
+
+  const describe_ = (name: string, description: string) => ({ name, description, makeDefault: undefined, renameFrom: undefined });
+
+  it('keeps the new name when a description-only update reads the old one', async () => {
+    const racing = await racingRename();
+    const result = await saveStyle(racing, 'u1', describe_('One', 'Changed'), later(5));
+    expect(result).toMatchObject({ style: { name: 'Two', description: 'Changed' } });
+    expect((await listStyles(racing, 'u1')).map(s => [s.name, s.description])).toEqual([['Two', 'Changed']]);
+    await expectConsistentNames(racing);
+  });
+
+  it('refuses a case-only change instead of putting the old name back, and says what happened', async () => {
+    const racing = await racingRename();
+    const result = await saveStyle(racing, 'u1', describe_('ONE', 'One big figure, few colours'), later(5));
+    expect(result).toEqual({ error: 'That style was changed at the same time. Try again.' });
+    expect((await listStyles(racing, 'u1')).map(s => s.name)).toEqual(['Two']);
+    await expectConsistentNames(racing);
+  });
+
+  it('says the style changed, not that the name is taken, when it loses a rename to a rename', async () => {
+    const racing = await racingRename();
+    const result = await save(racing, 'Three', { renameFrom: 'One' });
+    expect(result).toEqual({ error: 'That style was changed at the same time. Try again.' });
+    expect((await listStyles(racing, 'u1')).map(s => s.name)).toEqual(['Two']);
+    await expectConsistentNames(racing);
+  });
+
+  it('does not delete the new name key when a delete reads the old name', async () => {
+    const racing = await racingRename();
+    expect(await deleteStyle(racing, 'u1', 'One')).toBe(false);
+    expect((await listStyles(racing, 'u1')).map(s => s.name)).toEqual(['Two']);
+    await expectConsistentNames(racing);
+    expect(await deleteStyle(racing, 'u1', 'Two')).toBe(true);
+    expect(await save(racing, 'two')).toMatchObject({ created: true });
+  });
+});
+
+describe('orphaned name keys', () => {
+  const orphan = (sk: string, styleId: string) => store.put({ PK: 'USER#u1', SK: sk, styleId });
+
+  it('lets a new style take over a name key whose style no longer exists', async () => {
+    await orphan('STYLENAME#fresh', 'ghost');
+    expect(await save(store, 'Fresh')).toMatchObject({ created: true });
+    await expectConsistentNames(store);
+  });
+
+  it('lets a rename take over a name key whose style no longer exists', async () => {
+    await save(store, 'One');
+    await orphan('STYLENAME#fresh', 'ghost');
+    expect(await save(store, 'Fresh', { renameFrom: 'One' })).toMatchObject({ created: false });
+    await expectConsistentNames(store);
+  });
+
+  it('lets a save take over a name key whose style now has a different name', async () => {
+    const one = await save(store, 'One');
+    if ('error' in one) throw new Error('unexpected');
+    await orphan('STYLENAME#fresh', one.style.styleId);
+    expect(await save(store, 'Fresh')).toMatchObject({ created: true });
+  });
+
+  it('still refuses a name that a live style holds', async () => {
+    await save(store, 'One');
+    expect(await save(store, 'Other')).toMatchObject({ created: true });
+    expect(await save(store, 'Other', { renameFrom: 'One' })).toEqual({ error: 'Another saved style already has that name.' });
+  });
+});
+
 describe('lookup names', () => {
   it('does not echo the name in the error, and refuses long or non-string values', async () => {
     const missing = await save(store, 'x', { renameFrom: 'Secret thing' });

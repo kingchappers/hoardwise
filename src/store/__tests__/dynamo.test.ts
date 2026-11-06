@@ -85,6 +85,16 @@ describe('patch', () => {
     expect(sentInput().ConditionExpression).toBe('attribute_exists(PK)');
   });
 
+  it('requires the item to exist and every ifEquals attribute to match', async () => {
+    send.mockResolvedValueOnce({ Attributes: { PK, SK: 'CAT#a' } });
+    await store.patch({ PK, SK: 'CAT#a' }, { name: 'x' }, { ifEquals: { name: 'y', icon: 'star' } });
+    expect(sentInput()).toMatchObject({
+      ConditionExpression: 'attribute_exists(PK) AND #c0 = :c0 AND #c1 = :c1',
+      ExpressionAttributeNames: { '#f0': 'name', '#c0': 'name', '#c1': 'icon' },
+      ExpressionAttributeValues: { ':f0': 'x', ':c0': 'y', ':c1': 'star' },
+    });
+  });
+
   it('turns a failed condition into ConditionFailedError', async () => {
     send.mockRejectedValueOnce(awsError('ConditionalCheckFailedException'));
     await expect(store.patch({ PK, SK: 'CAT#a' }, { name: 'x' }, { mustExist: true }))

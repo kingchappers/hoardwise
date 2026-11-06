@@ -17,6 +17,8 @@ export interface QueryOptions {
 
 export interface PatchOptions {
   mustExist?: boolean;
+  // The patch applies only if the item exists and each named attribute still holds exactly this value (checked atomically).
+  ifEquals?: Record<string, unknown>;
   defaults?: Record<string, unknown>;
 }
 

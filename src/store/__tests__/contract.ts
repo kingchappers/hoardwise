@@ -85,6 +85,28 @@ export function runStoreContract(name: string, backend: ContractBackend, options
         expect(await store.get({ PK, SK: 'CAT#gone' })).toBeUndefined();
       });
 
+      it('applies the patch when every ifEquals attribute matches the stored value', async () => {
+        const PK = newUser();
+        await store.put({ PK, SK: 'CAT#a', name: 'Food', icon: 'star' });
+        const item = await store.patch({ PK, SK: 'CAT#a' }, { name: 'FOOD' }, { ifEquals: { name: 'Food', icon: 'star' } });
+        expect(item).toEqual({ PK, SK: 'CAT#a', name: 'FOOD', icon: 'star' });
+      });
+
+      it('throws and changes nothing when an ifEquals attribute differs', async () => {
+        const PK = newUser();
+        await store.put({ PK, SK: 'CAT#a', name: 'Food', icon: 'star' });
+        await expect(store.patch({ PK, SK: 'CAT#a' }, { icon: 'moon' }, { ifEquals: { name: 'Dining' } }))
+          .rejects.toBeInstanceOf(ConditionFailedError);
+        expect(await store.get({ PK, SK: 'CAT#a' })).toEqual({ PK, SK: 'CAT#a', name: 'Food', icon: 'star' });
+      });
+
+      it('throws and creates nothing when ifEquals is set and the item is missing', async () => {
+        const PK = newUser();
+        await expect(store.patch({ PK, SK: 'CAT#gone' }, { name: 'x' }, { ifEquals: { name: 'y' } }))
+          .rejects.toBeInstanceOf(ConditionFailedError);
+        expect(await store.get({ PK, SK: 'CAT#gone' })).toBeUndefined();
+      });
+
       it('applies defaults only to attributes that are not already set', async () => {
         const PK = newUser();
         await store.patch({ PK, SK: 'PUSHSUB#x' }, { hour: 8 }, { defaults: { createdAt: 'first' } });

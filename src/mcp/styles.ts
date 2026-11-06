@@ -100,19 +100,51 @@ function lookupName(value: unknown): string | undefined {
 
 type StyleRow = { createdAt: string; updatedAt: string; name: string; description: string; styleId: string };
 
+const CHANGED = 'That style was changed at the same time. Try again.';
+
+// A name key is live only while the style it points at exists and still carries that name. Style rows and name keys are
+// written together, so anything else is left over from an interrupted or racing write and may be taken over.
+async function clearStaleNameKey(store: Store, userId: string, nameSk: string): Promise<boolean> {
+  const key = await store.get({ PK: pk(userId), SK: nameSk }, { consistent: true });
+  if (!key) return true;
+  const owner = typeof key.styleId === 'string'
+    ? await store.get({ PK: pk(userId), SK: styleSk(key.styleId) }, { consistent: true })
+    : undefined;
+  if (owner && styleNameSk(String(owner.name)) === nameSk) return false;
+  try {
+    await store.delete({ PK: pk(userId), SK: nameSk }, { ifPresent: true });
+  } catch (error) {
+    if (!(error instanceof ConditionFailedError)) throw error;
+  }
+  return true;
+}
+
+type WriteResult = { row: StyleRow } | { error: string };
+
 async function writeStyle(
   store: Store,
   userId: string,
   existing: GraphicStyle | undefined,
   row: StyleRow,
-): Promise<string | undefined> {
+  mayTakeOver = true,
+): Promise<WriteResult> {
   const styleKey = { PK: pk(userId), SK: styleSk(row.styleId) };
   const newKey = { PK: pk(userId), SK: styleNameSk(row.name) };
   try {
     if (!existing) {
       await store.transact([{ put: { ...styleKey, ...row } }, { put: { ...newKey, styleId: row.styleId }, ifAbsent: true }]);
     } else if (styleNameSk(existing.name) === newKey.SK) {
-      await store.patch(styleKey, { name: row.name, description: row.description, updatedAt: row.updatedAt }, { mustExist: true });
+      // Same name key, so the name itself is not rewritten unless only its case changes, and then only if it is still what
+      // was read: a rename that committed in between must not be overwritten with the old name.
+      const nameUnchanged = existing.name === row.name;
+      const stored = nameUnchanged
+        ? await store.patch(styleKey, { description: row.description, updatedAt: row.updatedAt }, { mustExist: true })
+        : await store.patch(
+          styleKey,
+          { name: row.name, description: row.description, updatedAt: row.updatedAt },
+          { mustExist: true, ifEquals: { name: existing.name } },
+        );
+      return { row: { ...row, name: String(stored.name) } };
     } else {
       // The old name key goes away in the same transaction as the style, so it exists only while the style does.
       await store.transact([
@@ -123,12 +155,29 @@ async function writeStyle(
     }
   } catch (error) {
     if (!(error instanceof ConditionFailedError)) throw error;
-    if (!existing) return NAME_TAKEN;
-    if (styleNameSk(existing.name) === newKey.SK) return GONE;
-    // The failing index is not reliable on every store, so look at whether the style is still there.
-    return (await store.get(styleKey)) ? NAME_TAKEN : GONE;
+    return explainFailure(store, userId, existing, row, mayTakeOver);
   }
-  return undefined;
+  return { row };
+}
+
+async function explainFailure(
+  store: Store,
+  userId: string,
+  existing: GraphicStyle | undefined,
+  row: StyleRow,
+  mayTakeOver: boolean,
+): Promise<WriteResult> {
+  const newSk = styleNameSk(row.name);
+  const sameKey = existing !== undefined && styleNameSk(existing.name) === newSk;
+  // The failing index is not reliable on every store, so look at what is stored now.
+  if (!sameKey && await store.get({ PK: pk(userId), SK: newSk }, { consistent: true })) {
+    if (mayTakeOver && await clearStaleNameKey(store, userId, newSk)) {
+      return writeStyle(store, userId, existing, row, false);
+    }
+    return { error: NAME_TAKEN };
+  }
+  if (!existing) return mayTakeOver ? writeStyle(store, userId, existing, row, false) : { error: NAME_TAKEN };
+  return { error: (await store.get({ PK: pk(userId), SK: styleSk(row.styleId) }, { consistent: true })) ? CHANGED : GONE };
 }
 
 export async function saveStyle(
@@ -157,8 +206,8 @@ export async function saveStyle(
   const styleId = existing?.styleId ?? randomUUID();
   const createdAt = existing?.createdAt ?? iso;
   const row = { styleId, name: text.name, description: text.description, createdAt, updatedAt: iso };
-  const failure = await writeStyle(store, userId, existing, row);
-  if (failure) return { error: failure };
+  const written = await writeStyle(store, userId, existing, row);
+  if ('error' in written) return written;
 
   let isDefault = existing?.isDefault ?? false;
   if (input.makeDefault === true) {
@@ -169,7 +218,7 @@ export async function saveStyle(
     isDefault = false;
   }
 
-  return { style: { ...row, isDefault }, created: !existing };
+  return { style: { ...written.row, isDefault }, created: !existing };
 }
 
 export async function deleteStyle(store: Store, userId: string, name: string): Promise<boolean> {
@@ -180,7 +229,7 @@ export async function deleteStyle(store: Store, userId: string, name: string): P
 
   const ops: TxOp[] = [
     { delete: { PK: pk(userId), SK: styleSk(found.styleId) }, ifPresent: true },
-    { delete: { PK: pk(userId), SK: styleNameSk(found.name) } },
+    { delete: { PK: pk(userId), SK: styleNameSk(found.name) }, ifPresent: true },
   ];
   if (found.isDefault) ops.push({ delete: { PK: pk(userId), SK: STYLE_DEFAULT_SK } });
   try {

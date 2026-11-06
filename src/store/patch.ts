@@ -9,6 +9,12 @@ function definedEntries(values: Record<string, unknown>): [string, unknown][] {
   return Object.entries(values).filter(([, value]) => value !== undefined);
 }
 
+export function matchesAll(current: Record<string, unknown> | undefined, expected: Record<string, unknown> | undefined): boolean {
+  if (expected === undefined) return true;
+  if (current === undefined) return false;
+  return Object.entries(expected).every(([name, value]) => current[name] === value);
+}
+
 export function planPatch(fields: Record<string, unknown>, defaults: Record<string, unknown> = {}): PatchPlan {
   const plan: PatchPlan = { fields: definedEntries(fields), defaults: definedEntries(defaults) };
   if (plan.fields.length + plan.defaults.length === 0) {
