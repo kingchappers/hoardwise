@@ -165,6 +165,21 @@ describe('DueRecurringCard', () => {
     expect(mockHandled).toHaveBeenLastCalledWith({ recurringId: 'r1', period: '2025-09-14' });
   });
 
+  it('Undo after a skip clears a marker left in the old format by a frequency change', async () => {
+    const user = userEvent.setup();
+    dueState.items = [item(
+      { period: '2026-09-14', dueDate: '2026-09-14', status: 'past', daysAway: -14 },
+      { description: 'Gym', frequency: 'WEEKLY', anchorDate: '2026-09-14', handledPeriod: '2026-10' },
+    )];
+    renderCard();
+
+    await user.click(screen.getByRole('button', { name: 'More actions for Gym' }));
+    await user.click(await screen.findByRole('menuitem', { name: "Didn't happen" }));
+    await user.click(await screen.findByRole('button', { name: 'Undo' }));
+
+    expect(mockHandled).toHaveBeenLastCalledWith({ recurringId: 'r1', period: null });
+  });
+
   it.each([
     [undefined, false],
     ['30s', 30000],
@@ -238,6 +253,18 @@ describe('DueRecurringCard', () => {
     await user.click(screen.getByRole('button', { name: 'simulate undone' }));
 
     expect(mockHandled).toHaveBeenCalledWith({ recurringId: 'r1', period: '2026-08' });
+  });
+
+  it('Undo after Edit clears a marker left in the old format by a frequency change', async () => {
+    const user = userEvent.setup();
+    dueState.items = [item({}, { frequency: 'WEEKLY', anchorDate: '2026-09-14', handledPeriod: '2026-08' })];
+    renderCard();
+
+    await user.click(screen.getByRole('button', { name: 'More actions for Salary' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Add with changes' }));
+    await user.click(screen.getByRole('button', { name: 'simulate undone' }));
+
+    expect(mockHandled).toHaveBeenCalledWith({ recurringId: 'r1', period: null });
   });
 
   it('Undo after Edit can restore an empty handled marker', async () => {

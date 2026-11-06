@@ -16,7 +16,7 @@ import { currentYearMonth, formatMonthName, formatShortDate, todayIso } from '~/
 import { usePreferences } from '~/lib/preferences';
 import { useCategories, useLinkTransaction, useSetRecurringHandled } from '~/lib/queries';
 import { undoAutoClose } from '~/lib/undoDuration';
-import { dueLabel, groupDueItems, occurrenceLabel, olderGroupHeading, type DueGroup, type DueItem } from '~/lib/recurring';
+import { dueLabel, groupDueItems, occurrenceLabel, olderGroupHeading, restorablePeriod, type DueGroup, type DueItem } from '~/lib/recurring';
 import { formatPence } from '~/lib/money';
 import { formatSignedPence } from '~/lib/transactionTypes';
 import type { Transaction } from '~/lib/types';
@@ -166,7 +166,7 @@ export function DueRecurringCard() {
 
   function skip(item: DueItem): void {
     const { recurringId } = item.recurring;
-    const previousPeriod = item.recurring.handledPeriod;
+    const previousPeriod = restorablePeriod(item.recurring);
     markHandled(item);
 
     const toastId = `skipped-${crypto.randomUUID()}`;
@@ -298,7 +298,7 @@ export function DueRecurringCard() {
           if (!editing) return;
           setHandled.mutate({
             recurringId: editing.recurring.recurringId,
-            period: editing.recurring.handledPeriod,
+            period: restorablePeriod(editing.recurring),
           });
         }}
       />
