@@ -248,6 +248,12 @@ describe('updateCategory', () => {
     await nothingStored();
   });
 
+  it('returns 404 for an unknown category even when the body is invalid', async () => {
+    const res = await updateCategory(makeEvent({}), 'user-1', { categoryId: 'unknown-id' });
+    expect(res.statusCode).toBe(404);
+    await nothingStored();
+  });
+
   it('builds the key from the caller, so another user\'s category is not found for them', async () => {
     await seedExisting('user-1');
     const res = await updateCategory(makeEvent({ name: 'New Name' }), 'user-2', { categoryId: 'custom-abc' });
@@ -269,21 +275,24 @@ describe('updateCategory', () => {
   });
 
   it('returns 400 for missing name', async () => {
+    await seedExisting();
     const res = await updateCategory(makeEvent({}), 'user-1', { categoryId: 'custom-abc' });
     expect(res.statusCode).toBe(400);
-    await nothingStored();
+    expect(await store.get({ PK: 'USER#user-1', SK: 'CAT#custom-abc' })).toMatchObject({ name: 'Old Name' });
   });
 
   it('returns 400 for an empty name', async () => {
+    await seedExisting();
     const res = await updateCategory(makeEvent({ name: '   ' }), 'user-1', { categoryId: 'custom-abc' });
     expect(res.statusCode).toBe(400);
-    await nothingStored();
+    expect(await store.get({ PK: 'USER#user-1', SK: 'CAT#custom-abc' })).toMatchObject({ name: 'Old Name' });
   });
 
   it('returns 400 for name over 50 chars', async () => {
+    await seedExisting();
     const res = await updateCategory(makeEvent({ name: 'a'.repeat(51) }), 'user-1', { categoryId: 'custom-abc' });
     expect(res.statusCode).toBe(400);
-    await nothingStored();
+    expect(await store.get({ PK: 'USER#user-1', SK: 'CAT#custom-abc' })).toMatchObject({ name: 'Old Name' });
   });
 
   it('rethrows unexpected errors', async () => {

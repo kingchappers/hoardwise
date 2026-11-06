@@ -92,6 +92,14 @@ export async function findCategory(userId: string, categoryId: string): Promise<
   return (await queryOne(userId, catSk(categoryId))) as Category | undefined;
 }
 
+/** Looks the pot up before any body is validated: unknown id is 404, an existing non-pot category is 400. */
+export async function potCategoryError(userId: string, categoryId: string): Promise<ApiResponse | null> {
+  const category = await findCategory(userId, categoryId);
+  if (!category) return err(404, 'Category not found');
+  if (category.type !== 'POT') return err(400, 'categoryId must be an existing pot category');
+  return null;
+}
+
 export async function putPot(
   event: APIGatewayProxyEventV2,
   userId: string,
@@ -101,6 +109,9 @@ export async function putPot(
   if (!categoryId) {
     return err(400, 'categoryId is required');
   }
+
+  const notAPot = await potCategoryError(userId, categoryId);
+  if (notAPot) return notAPot;
 
   const body = parseJsonObject(event);
   if (!body) return err(400, 'Invalid JSON body');
@@ -120,11 +131,6 @@ export async function putPot(
   }
   if (autoContribute && monthlyAmount === null) {
     return err(400, 'autoContribute needs a monthlyAmount');
-  }
-
-  const category = await findCategory(userId, categoryId);
-  if (!category || category.type !== 'POT') {
-    return err(400, 'categoryId must be an existing pot category');
   }
 
   const existingItem = await queryOne(userId, potSk(categoryId));

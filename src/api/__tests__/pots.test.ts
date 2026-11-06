@@ -174,9 +174,14 @@ describe('putPot', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('returns 400 when a custom category does not exist', async () => {
+  it('returns 404 when a custom category does not exist', async () => {
     const res = await putPot(putEvent(valid), 'user-1', { categoryId: 'custom-missing' });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 404 for an unknown pot even when the body is invalid', async () => {
+    const res = await putPot(putEvent({}), 'user-1', { categoryId: 'custom-missing' });
+    expect(res.statusCode).toBe(404);
   });
 
   it('returns 400 when a custom category is not a pot', async () => {

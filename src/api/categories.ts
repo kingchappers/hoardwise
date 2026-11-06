@@ -141,6 +141,9 @@ export async function updateCategory(
     return err(403, 'Cannot rename a default category');
   }
 
+  const existing = await getStore().get({ PK: pk(userId), SK: catSk(categoryId) });
+  if (!existing) return err(404, 'Category not found');
+
   const body = parseJsonObject(event);
   if (!body) return err(400, 'Invalid JSON body');
 

@@ -174,6 +174,12 @@ export async function updateTransaction(
     return err(400, 'transactionId is required');
   }
 
+  const store = getStore();
+  const existing = (await store.get({ PK: pk(userId), SK: txnSk(yearMonth, transactionId) })) as unknown as Transaction | undefined;
+  if (!existing) {
+    return err(404, 'Transaction not found');
+  }
+
   const body = parseJsonObject(event);
   if (!body) return err(400, 'Invalid JSON body');
 
@@ -182,12 +188,6 @@ export async function updateTransaction(
     return err(400, validation.message);
   }
   const { amount, type, categoryId, description, date, recurringId } = validation.value;
-
-  const store = getStore();
-  const existing = (await store.get({ PK: pk(userId), SK: txnSk(yearMonth, transactionId) })) as unknown as Transaction | undefined;
-  if (!existing) {
-    return err(404, 'Transaction not found');
-  }
 
   const newYearMonth = date.slice(0, 7);
   const transaction: Transaction = {

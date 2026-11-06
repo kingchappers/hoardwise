@@ -4,7 +4,7 @@ import { pk, potSk, recurringSk } from './db';
 import { DEFAULT_CATEGORIES } from './defaults';
 import { ok, err, parseJsonObject } from './http';
 import {
-  applyAutoContribute, findCategory, isValidMonth, monthIndex, queryAll, queryOne, serverMonthIndex, toSettings,
+  applyAutoContribute, isValidMonth, monthIndex, potCategoryError, queryAll, queryOne, serverMonthIndex, toSettings,
 } from './pots';
 import { computePots } from './potsCalc';
 import { moveToTrash } from './trash';
@@ -64,11 +64,11 @@ export async function archivePot(
   const { categoryId } = params;
   if (!categoryId) return err(400, 'categoryId is required');
 
+  const notAPot = await potCategoryError(userId, categoryId);
+  if (notAPot) return notAPot;
+
   const month = parseMonth(event);
   if (month === null) return err(400, 'Body must be { month } as a YYYY-MM month within one month of now');
-
-  const category = await findCategory(userId, categoryId);
-  if (!category || category.type !== 'POT') return err(400, 'categoryId must be an existing pot category');
 
   const existing = await loadPotSettings(userId, categoryId);
   const stopped: PotSettings = {
@@ -98,8 +98,8 @@ export async function unarchivePot(
   const { categoryId } = params;
   if (!categoryId) return err(400, 'categoryId is required');
 
-  const category = await findCategory(userId, categoryId);
-  if (!category || category.type !== 'POT') return err(400, 'categoryId must be an existing pot category');
+  const notAPot = await potCategoryError(userId, categoryId);
+  if (notAPot) return notAPot;
 
   const existing = await loadPotSettings(userId, categoryId);
   if (!existing?.archivedAt) return err(409, 'This pot is not archived');
