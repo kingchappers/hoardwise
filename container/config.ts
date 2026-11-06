@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 
 export class ConfigError extends Error {
   readonly problems: string[];
@@ -73,18 +74,51 @@ export const SQLITE_FILE = 'hoardwise.sqlite';
 // -shm files, and a crash between the moves can lose recent writes.
 export const LEGACY_SQLITE_FILE = 'budget.sqlite';
 
-export function chooseSqliteFile(dataDir: string, exists: (path: string) => boolean): { path: string; warning?: string } {
+// Whether the database holds any items: true or false when it could be read, undefined when it could not. It opens the file
+// read-only, so it never creates, migrates or writes to it.
+export function sqliteHasItems(path: string): boolean | undefined {
+  let db: DatabaseSync | undefined;
+  try {
+    db = new DatabaseSync(path, { readOnly: true });
+    const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'items'").get();
+    if (!table) return false;
+    return db.prepare('SELECT 1 FROM items LIMIT 1').get() !== undefined;
+  } catch {
+    return undefined;
+  } finally {
+    db?.close();
+  }
+}
+
+export function chooseSqliteFile(
+  dataDir: string,
+  exists: (path: string) => boolean,
+  hasItems: (path: string) => boolean | undefined = sqliteHasItems,
+): { path: string; warning?: string } {
   const current = `${dataDir}/${SQLITE_FILE}`;
   const legacy = `${dataDir}/${LEGACY_SQLITE_FILE}`;
   if (!exists(current)) return { path: exists(legacy) ? legacy : current };
   if (!exists(legacy)) return { path: current };
+  // An empty hoardwise.sqlite next to a populated budget.sqlite is almost always one created by mistake on an older install
+  // (for example by a command run before the CLI checked the path), so the data is used rather than hidden. Anything unclear
+  // keeps the rule below, and neither file is renamed or deleted.
+  if (hasItems(current) === false && hasItems(legacy) === true) {
+    return {
+      path: legacy,
+      warning: `Both ${SQLITE_FILE} and ${LEGACY_SQLITE_FILE} exist in ${dataDir}, and ${SQLITE_FILE} is empty. Using ${LEGACY_SQLITE_FILE}, which holds your data. Neither file was changed; you can delete the empty ${SQLITE_FILE} when the app is stopped.`,
+    };
+  }
   return {
     path: current,
     warning: `Both ${SQLITE_FILE} and ${LEGACY_SQLITE_FILE} exist in ${dataDir}. Using ${SQLITE_FILE}; the data in ${LEGACY_SQLITE_FILE} is not being read. If ${SQLITE_FILE} is an empty file created by mistake, stop the app and remove it so ${LEGACY_SQLITE_FILE} is used again.`,
   };
 }
 
-export function parseConfig(env: NodeJS.ProcessEnv, exists: (path: string) => boolean = existsSync): ContainerConfig {
+export function parseConfig(
+  env: NodeJS.ProcessEnv,
+  exists: (path: string) => boolean = existsSync,
+  hasItems: (path: string) => boolean | undefined = sqliteHasItems,
+): ContainerConfig {
   const problems: string[] = [];
   const warnings: string[] = [];
 
@@ -145,7 +179,7 @@ export function parseConfig(env: NodeJS.ProcessEnv, exists: (path: string) => bo
 
   if (problems.length > 0) throw new ConfigError(problems);
 
-  const sqlite = chooseSqliteFile(dataDir, exists);
+  const sqlite = chooseSqliteFile(dataDir, exists, hasItems);
   if (sqlite.warning) warnings.push(sqlite.warning);
 
   return {
