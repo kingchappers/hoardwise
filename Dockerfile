@@ -1,5 +1,5 @@
-# Pinned by multi-arch index digest. node:24-bookworm-slim and caddy:2, resolved 2026-10-15 (caddy bumped 2026-10-28); bump deliberately.
-FROM caddy:2@sha256:5e5286cb37d44086d651a5363f05f43a692ce4d649d88fb1bd844579f45fa9e8 AS caddy
+# Pinned by multi-arch index digest. node:24-bookworm-slim and caddy:2, resolved 2026-10-15 (caddy bumped 2026-11-06); bump deliberately.
+FROM caddy:2@sha256:ce773ec7a742ce15ee6bf2bb5f65882b9e2a4487b10733e6f1484f86e6b5d8bc AS caddy
 
 # Runs on the builder's own architecture: it emits only JavaScript, and under QEMU the prerender step times out.
 FROM --platform=$BUILDPLATFORM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5 AS build
@@ -31,7 +31,7 @@ RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack 
     /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
     /opt/yarn-* /usr/local/bin/yarn /usr/local/bin/yarnpkg
 COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
-# The official caddy image already carries cap_net_bind_service on its binary and COPY keeps it; this line is defence in depth.
+# The official caddy image carries cap_net_bind_service (+p since v2.11.8) on its binary and COPY keeps it; this line is defence in depth.
 # File capabilities only matter where net.ipv4.ip_unprivileged_port_start is above 80 (Docker's default sets it to 0), and are
 # ignored under no-new-privileges.
 # /data and /data/backups are created here, owned by the app user, so a fresh named volume mounted at either inherits that ownership.
