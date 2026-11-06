@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { ConfigError, chooseSqliteFile, isValidEmail, isValidHostname, parseConfig } from '../config';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ConfigError, chooseSqliteFile, isValidEmail, isValidHostname, parseConfig, sqliteHasItems } from '../config';
 
 const problemsOf = (env: NodeJS.ProcessEnv): string[] => {
   try {
@@ -196,6 +200,50 @@ describe('the database file', () => {
     expect(chosen.warning).toContain('budget.sqlite');
   });
 
+  describe('when both files exist and one is empty', () => {
+    const both = existing('/data/hoardwise.sqlite', '/data/budget.sqlite');
+    const populated = (...paths: string[]) => (path: string): boolean | undefined => paths.includes(path);
+
+    it('uses budget.sqlite when hoardwise.sqlite has no data and budget.sqlite has some', () => {
+      const chosen = chooseSqliteFile('/data', both, populated('/data/budget.sqlite'));
+      expect(chosen.path).toBe('/data/budget.sqlite');
+      expect(chosen.warning).toContain('hoardwise.sqlite is empty');
+      expect(chosen.warning).toContain('Neither file was changed');
+    });
+
+    it('keeps hoardwise.sqlite when it has data, whatever budget.sqlite holds', () => {
+      for (const filled of [['/data/hoardwise.sqlite'], ['/data/hoardwise.sqlite', '/data/budget.sqlite']]) {
+        expect(chooseSqliteFile('/data', both, populated(...filled)).path).toBe('/data/hoardwise.sqlite');
+      }
+    });
+
+    it('keeps hoardwise.sqlite when both are empty', () => {
+      expect(chooseSqliteFile('/data', both, populated()).path).toBe('/data/hoardwise.sqlite');
+    });
+
+    it('keeps hoardwise.sqlite when either file cannot be read', () => {
+      const unreadable = (path: string): boolean | undefined => (path.endsWith('budget.sqlite') ? true : undefined);
+      expect(chooseSqliteFile('/data', both, unreadable).path).toBe('/data/hoardwise.sqlite');
+      const otherWay = (path: string): boolean | undefined => (path.endsWith('budget.sqlite') ? undefined : false);
+      expect(chooseSqliteFile('/data', both, otherWay).path).toBe('/data/hoardwise.sqlite');
+    });
+
+    it('does not look inside either file unless both exist', () => {
+      const looked: string[] = [];
+      const probe = (path: string): boolean | undefined => { looked.push(path); return true; };
+      chooseSqliteFile('/data', existing('/data/budget.sqlite'), probe);
+      chooseSqliteFile('/data', existing('/data/hoardwise.sqlite'), probe);
+      chooseSqliteFile('/data', existing(), probe);
+      expect(looked).toEqual([]);
+    });
+
+    it('is applied by parseConfig, with the warning added to the others', () => {
+      const config = parseConfig({}, both, populated('/data/budget.sqlite'));
+      expect(config.sqlitePath).toBe('/data/budget.sqlite');
+      expect(config.warnings.join(' ')).toContain('hoardwise.sqlite is empty');
+    });
+  });
+
   it('is applied by parseConfig, with the warning added to the others', () => {
     expect(parseConfig({}, existing('/data/budget.sqlite')).sqlitePath).toBe('/data/budget.sqlite');
     const both = parseConfig({}, existing('/data/hoardwise.sqlite', '/data/budget.sqlite'));
@@ -207,5 +255,49 @@ describe('the database file', () => {
     const asked: string[] = [];
     parseConfig({ DATA_DIR: '/vol' }, path => { asked.push(path); return false; });
     expect(asked.sort()).toEqual(['/vol/budget.sqlite', '/vol/hoardwise.sqlite']);
+  });
+});
+
+describe('sqliteHasItems', () => {
+  let dir: string;
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'hw-probe-')); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  function database(name: string, setup: (db: DatabaseSync) => void): string {
+    const path = join(dir, name);
+    const db = new DatabaseSync(path);
+    setup(db);
+    db.close();
+    return path;
+  }
+
+  it('is true for a database with an item', () => {
+    const path = database('full.sqlite', db => {
+      db.exec('CREATE TABLE items (pk TEXT, sk TEXT, data TEXT)');
+      db.exec("INSERT INTO items VALUES ('USER#a', 'CAT#x', '{}')");
+    });
+    expect(sqliteHasItems(path)).toBe(true);
+  });
+
+  it('is false for a database with an empty items table, or no tables at all', () => {
+    expect(sqliteHasItems(database('empty.sqlite', db => db.exec('CREATE TABLE items (pk TEXT, sk TEXT, data TEXT)')))).toBe(false);
+    expect(sqliteHasItems(database('blank.sqlite', () => undefined))).toBe(false);
+  });
+
+  it('is unknown for a file that is not a database, and a missing file', () => {
+    writeFileSync(join(dir, 'junk.sqlite'), 'this is not a database file at all, just text');
+    expect(sqliteHasItems(join(dir, 'junk.sqlite'))).toBeUndefined();
+    expect(sqliteHasItems(join(dir, 'missing.sqlite'))).toBeUndefined();
+  });
+
+  it('changes neither the file nor the folder', () => {
+    const path = database('full.sqlite', db => {
+      db.exec('CREATE TABLE items (pk TEXT, sk TEXT, data TEXT)');
+      db.exec("INSERT INTO items VALUES ('USER#a', 'CAT#x', '{}')");
+    });
+    const before = { files: readdirSync(dir).sort(), bytes: readFileSync(path) };
+    sqliteHasItems(path);
+    expect(readdirSync(dir).sort()).toEqual(before.files);
+    expect(readFileSync(path).equals(before.bytes)).toBe(true);
   });
 });

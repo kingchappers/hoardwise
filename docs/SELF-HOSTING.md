@@ -21,7 +21,7 @@ Environment variables only. The container sets `AUTH_MODE`, `STORE` and `SQLITE_
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DATA_DIR` | `/data` | Volume holding the database (`hoardwise.sqlite`; an install created before 0.3.0 keeps its `budget.sqlite`, which is used as it is and never renamed; if both files are present the app uses `hoardwise.sqlite`), backups, the `caddy/` certificate storage and `caddy-data/` (Caddy's own data directory, such as its instance id). An absolute path using only letters, digits and `. _ / -`, with no `..` segment and not `/` |
+| `DATA_DIR` | `/data` | Volume holding the database (`hoardwise.sqlite`; an install created before 0.3.0 keeps its `budget.sqlite`, which is used as it is and never renamed; if both files are present the app uses `hoardwise.sqlite`, unless it is empty and `budget.sqlite` holds your data, in which case it uses `budget.sqlite` and says so in the start-up log; it never renames or deletes either), backups, the `caddy/` certificate storage and `caddy-data/` (Caddy's own data directory, such as its instance id). An absolute path using only letters, digits and `. _ / -`, with no `..` segment and not `/` |
 | `PORT` | `8080` | Port the app listens on inside the container. Must be a fixed port (not 0) with `TLS_DOMAIN` |
 | `TLS_DOMAIN` | unset | A plain hostname such as `hoardwise.example.com` for automatic HTTPS on ports 80 and 443. Unset means plain HTTP |
 | `TLS_EMAIL` | unset | Optional contact address for the certificate authority. Needs `TLS_DOMAIN` |
