@@ -1,2 +1,7 @@
-# Trivy accepted-risk list. Empty on purpose: the Caddy findings that used to be listed here were cleared by bumping caddy:2 to v2.11.9
-# (Go 1.27, x/net 0.60.0, go-jose 4.1.6) on 2026-11-06 (HOA-21). Add an entry only with a CVE, a reason and an exp: date.
+# Trivy accepted-risk list. Add an entry only with a CVE, a reason and an exp: date.
+#
+# Added 2026-11-06 (HOA-21): CVE-2026-78661, a denial of service in golang.org/x/net/html (fixed in x/net 0.62.0). The upstream caddy:2
+# image (v2.11.9) is on x/net 0.60.0. Caddy itself imports only x/net's httpguts, http2, http2/h2c and idna, never the html package, and
+# it only runs when TLS_DOMAIN is set (plain HTTP mode, including behind a hosting platform's proxy, never starts it). Short expiry on
+# purpose: re-check caddy:2 for x/net >= 0.62.0 and remove this entry; if it is still unpatched, build Caddy with xcaddy instead of renewing.
+CVE-2026-78661 exp:2026-11-27
