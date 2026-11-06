@@ -1,25 +1,7 @@
-# Remote denial-of-service issues in the Go standard library and golang.org/x/net inside the upstream
-# caddy:2 image (v2.11.7, built on Go 1.26.8 / x/net 0.59.0; fixed in Go 1.26.9 / x/net 0.60.0).
-# Caddy only runs when TLS_DOMAIN is set; plain HTTP mode does not start it. No patched caddy image existed on 2026-10-15 or when re-checked on 2026-10-17 (caddy:2 still v2.11.7, same digest). Re-checked 2026-10-22: caddy:2 was rebuilt (new digest) but is still Go 1.26.8 / x/net 0.59.0. Renewed once to 2026-11-14.
-# These entries EXPIRE on 2026-11-14, after which the Trivy gate fails again by itself.
-# Remove them as soon as the caddy:2 digest in the Dockerfile is bumped to a rebuild on Go >= 1.26.9 and x/net >= 0.60.0.
-CVE-2026-78667 exp:2026-11-14
-CVE-2026-78669 exp:2026-11-14
-CVE-2026-97031 exp:2026-11-14
-
-# Added 2026-10-22: crypto/x509 man-in-the-middle via untrusted intermediate certificates in the Go standard library inside the
-# upstream caddy:2 image (still Go 1.26.8 after its 2026-10-21 rebuild; fixed in Go 1.26.10 / 1.27.3). Same exposure as the entries above:
-# Caddy only runs when TLS_DOMAIN is set, and plain HTTP mode (including behind a hosting platform's proxy) never starts it.
-# Expires with them on 2026-11-14. If caddy:2 has not moved to Go >= 1.26.10 by then, build Caddy with xcaddy on a patched golang image
-# instead of renewing again.
-CVE-2026-111943 exp:2026-11-14
-
-# Added 2026-10-28, two findings in the upstream caddy:2 image that were published after the entries above:
-# - CVE-2026-116587: go-jose v4.1.5 (fixed in 4.1.6) can be made to spend excessive CPU parsing a JWK that contains an RSA key. Caddy only runs
-#   when TLS_DOMAIN is set, and it does not parse JWKs from untrusted sources in this setup.
-# - CVE-2026-56857: Go stdlib Root.Mkdir(All) following junctions on Windows (fixed in Go 1.26.9 / 1.27.2). Junctions are a Windows feature,
-#   and this image only runs Linux.
-# The caddy:2 rebuild of 2026-10-27 (sha256:5e5286cb37d4..., now pinned in the Dockerfile) is still Go 1.26.8 / go-jose 4.1.5, so it does not clear
-# them. Remove these when caddy:2 moves to Go >= 1.26.10 and go-jose >= 4.1.6. Expires with the entries above on 2026-11-14.
-CVE-2026-116587 exp:2026-11-14
-CVE-2026-56857 exp:2026-11-14
+# Trivy accepted-risk list. Add an entry only with a CVE, a reason and an exp: date.
+#
+# Added 2026-11-06 (HOA-21): CVE-2026-78661, a denial of service in golang.org/x/net/html (fixed in x/net 0.62.0). The upstream caddy:2
+# image (v2.11.9) is on x/net 0.60.0. Caddy itself imports only x/net's httpguts, http2, http2/h2c and idna, never the html package, and
+# it only runs when TLS_DOMAIN is set (plain HTTP mode, including behind a hosting platform's proxy, never starts it). Short expiry on
+# purpose: re-check caddy:2 for x/net >= 0.62.0 and remove this entry; if it is still unpatched, build Caddy with xcaddy instead of renewing.
+CVE-2026-78661 exp:2026-11-27
