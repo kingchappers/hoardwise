@@ -295,6 +295,18 @@ describe('updateTransaction', () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it('returns 404 for an unknown transaction even when the body is invalid', async () => {
+    const res = await updateTransaction(makeEvent({ body: {} }), 'user-1', params);
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 400 for an invalid body on a transaction that exists, changing nothing', async () => {
+    await seedUser(store, 'user-1', [{ SK: 'TXN#2026-07#txn-1', ...existing }]);
+    const res = await updateTransaction(makeEvent({ body: { amount: -1 } }), 'user-1', params);
+    expect(res.statusCode).toBe(400);
+    expect(await store.get({ PK: 'USER#user-1', SK: 'TXN#2026-07#txn-1' })).toMatchObject({ amount: 480 });
+  });
+
   it('moves the item transactionally when the month changes', async () => {
     await seedUser(store, 'user-1', [{ SK: 'TXN#2026-07#txn-1', ...existing }]);
     const spy = vi.spyOn(store, 'transact');
@@ -309,8 +321,9 @@ describe('updateTransaction', () => {
     expect(await store.get({ PK: 'USER#user-1', SK: 'TXN#2026-08#txn-1' })).toMatchObject({ yearMonth: '2026-08' });
   });
 
-  it('returns 400 for an invalid amount', async () => {
-    const spy = vi.spyOn(store, 'get');
+  it('returns 400 for an invalid amount, writing nothing', async () => {
+    await seedUser(store, 'user-1', [{ SK: 'TXN#2026-07#txn-1', ...existing }]);
+    const spy = vi.spyOn(store, 'put');
     const res = await updateTransaction(makeEvent({
       body: { amount: -5, type: 'EXPENSE', categoryId: 'cat-dining', description: 'x', date: '2026-07-16' },
     }), 'user-1', params);
@@ -389,8 +402,9 @@ describe('recurringId on transactions', () => {
     expect(JSON.parse(res.body).transaction.recurringId).toBe(recurringId);
   });
 
-  it('rejects an invalid recurringId on update without reading the item', async () => {
-    const spy = vi.spyOn(store, 'get');
+  it('rejects an invalid recurringId on update, writing nothing', async () => {
+    await seedUser(store, 'user-1', [{ SK: 'TXN#2026-09#txn-1', ...existing }]);
+    const spy = vi.spyOn(store, 'put');
     const res = await updateTransaction(makeEvent({ body: { ...base, recurringId: 'nope' } }), 'user-1', params);
     expect(res.statusCode).toBe(400);
     expect(spy).not.toHaveBeenCalled();

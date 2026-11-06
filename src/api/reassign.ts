@@ -42,6 +42,11 @@ async function reassignItems(
   return reassigned;
 }
 
+async function categoryExists(userId: string, categoryId: string): Promise<boolean> {
+  if (DEFAULT_CATEGORY_IDS.has(categoryId)) return true;
+  return Boolean(await getStore().get({ PK: pk(userId), SK: catSk(categoryId) }));
+}
+
 export async function reassignCategory(
   event: APIGatewayProxyEventV2,
   userId: string,
@@ -51,6 +56,9 @@ export async function reassignCategory(
 
   if (!categoryId) {
     return err(400, 'categoryId is required');
+  }
+  if (!(await categoryExists(userId, categoryId))) {
+    return err(404, 'Category not found');
   }
 
   const body = parseJsonObject(event);
@@ -64,11 +72,8 @@ export async function reassignCategory(
     return err(400, 'toCategoryId must differ from the category being reassigned');
   }
 
-  if (!DEFAULT_CATEGORY_IDS.has(toCategoryId)) {
-    const target = await getStore().get({ PK: pk(userId), SK: catSk(toCategoryId) });
-    if (!target) {
-      return err(400, 'toCategoryId does not exist');
-    }
+  if (!(await categoryExists(userId, toCategoryId))) {
+    return err(400, 'toCategoryId does not exist');
   }
 
   const reassigned = await reassignItems(userId, 'TXN#', categoryId, toCategoryId);

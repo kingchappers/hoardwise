@@ -5,7 +5,10 @@ import { reassignCategory } from '../reassign';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 
 let store: SqliteStore;
-beforeEach(() => { store = useTestStore(); });
+beforeEach(async () => {
+  store = useTestStore();
+  await seedUser(store, 'user-1', [{ SK: 'CAT#cat-custom', categoryId: 'cat-custom', name: 'Custom', type: 'EXPENSE' }]);
+});
 afterEach(() => { resetTestStore(); });
 
 function makeEvent(body?: object): APIGatewayProxyEventV2 {
@@ -43,6 +46,18 @@ describe('reassignCategory', () => {
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).reassigned).toBe(0);
     expect(await categoryOf('TXN#2026-07#c')).toBe('cat-food');
+  });
+
+  it('returns 404 for an unknown source category even when the body is invalid', async () => {
+    const res = await reassignCategory(makeEvent({}), 'user-1', { categoryId: 'cat-missing' });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 404 for an unknown source category and changes nothing', async () => {
+    await seedUser(store, 'user-1', [{ SK: 'TXN#2026-07#c', categoryId: 'cat-missing' }]);
+    const res = await reassignCategory(makeEvent({ toCategoryId: 'cat-going-out' }), 'user-1', { categoryId: 'cat-missing' });
+    expect(res.statusCode).toBe(404);
+    expect(await categoryOf('TXN#2026-07#c')).toBe('cat-missing');
   });
 
   it('rejects reassigning a category to itself without touching the store', async () => {
@@ -92,6 +107,7 @@ describe('reassignCategory', () => {
     await seedUser(store, 'user-1', [
       { SK: 'TXN#2026-10#a', categoryId: 'old' },
       { SK: 'TXN#2026-10#b', categoryId: 'old' },
+      { SK: 'CAT#old', categoryId: 'old', name: 'Old', type: 'EXPENSE' },
       { SK: 'CAT#new', categoryId: 'new', name: 'New', type: 'EXPENSE' },
     ]);
     const realPatch = store.patch.bind(store);

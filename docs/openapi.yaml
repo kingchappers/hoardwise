@@ -333,6 +333,15 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          description: >-
+            `categoryId` (the category being reassigned) does not exist (`Category not found`). Nothing was changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Category not found
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -997,6 +1006,15 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          description: >-
+            No category with this `categoryId` exists (`Category not found`). This is checked before the body, so a bad body on an unknown id is also 404.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Category not found
         '409':
           description: The pot is archived (`Unarchive this pot before changing it`). Nothing was changed.
           content:
@@ -1079,6 +1097,15 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          description: >-
+            No category with this `categoryId` exists (`Category not found`). This is checked before the body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Category not found
         '409':
           description: The pot still holds money (or is overdrawn). Nothing was changed.
           content:
@@ -1145,6 +1172,15 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          description: >-
+            No category with this `categoryId` exists (`Category not found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Category not found
         '409':
           description: The pot is not archived (`This pot is not archived`). Nothing was changed.
           content:

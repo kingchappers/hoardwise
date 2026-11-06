@@ -336,13 +336,20 @@ const ERROR_CASES: ErrorCase[] = [
   { key: 'PUT /api/categories/{categoryId} 404', run: async () => ({ path: { categoryId: UNKNOWN_UUID }, body: { name: 'Food' } }) },
   { key: 'DELETE /api/categories/{categoryId} 403', run: async () => ({ path: { categoryId: 'cat-groceries' } }) },
   { key: 'POST /api/categories/{categoryId}/reassign 400', run: async () => ({ path: { categoryId: 'cat-groceries' }, body: {} }) },
+  { key: 'POST /api/categories/{categoryId}/reassign 404', run: async () => ({ path: { categoryId: UNKNOWN_UUID }, body: { toCategoryId: 'cat-groceries' } }) },
   { key: 'PUT /api/targets/{categoryId} 400', run: async () => ({ path: { categoryId: 'cat-groceries' }, body: { targetAmount: 0, period: 'MONTHLY' } }) },
   { key: 'PUT /api/targets/{categoryId} 404', run: async () => ({ path: { categoryId: UNKNOWN_UUID }, body: { targetAmount: 30000, period: 'MONTHLY' } }) },
   { key: 'PUT /api/expected-income 400', run: async () => ({ body: { amount: 0 } }) },
   { key: 'GET /api/transactions 400', run: async () => ({}) },
   { key: 'POST /api/transactions 400', run: async () => ({ body: {} }) },
   { key: 'GET /api/transactions/range 400', run: async () => ({ query: { from: '2026-10', to: '2026-08' } }) },
-  { key: 'PUT /api/transactions/{yearMonth}/{transactionId} 400', run: async () => ({ path: { yearMonth: '2026-10', transactionId: UUID }, body: {} }) },
+  {
+    key: 'PUT /api/transactions/{yearMonth}/{transactionId} 400',
+    run: async (arrange) => {
+      await arrange.call('POST /api/transactions', 'expense');
+      return { path: { yearMonth: '2026-10', transactionId: UUID }, body: {} };
+    },
+  },
   {
     key: 'PUT /api/transactions/{yearMonth}/{transactionId} 404',
     run: async () => ({
@@ -363,6 +370,12 @@ const ERROR_CASES: ErrorCase[] = [
       return { path: { categoryId: POT }, body: { monthlyAmount: 5000, goalAmount: null, autoContribute: false, month: '2026-10' } };
     },
   },
+  {
+    key: 'PUT /api/pots/{categoryId} 404',
+    run: async () => ({ path: { categoryId: UNKNOWN_UUID }, body: { monthlyAmount: 5000, goalAmount: null, autoContribute: false, month: '2026-10' } }),
+  },
+  { key: 'POST /api/pots/{categoryId}/archive 404', run: async () => ({ path: { categoryId: UNKNOWN_UUID }, body: { month: '2026-10' } }) },
+  { key: 'POST /api/pots/{categoryId}/unarchive 404', run: async () => ({ path: { categoryId: UNKNOWN_UUID } }) },
   { key: 'POST /api/pots/{categoryId}/archive 400', run: async () => ({ path: { categoryId: POT }, body: { month: 'soon' } }) },
   {
     key: 'POST /api/pots/{categoryId}/archive 409',

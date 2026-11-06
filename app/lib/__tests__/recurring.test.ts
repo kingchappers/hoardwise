@@ -3,7 +3,7 @@ import {
   computeDueItems, dueDateFor, dueLabel, formatDayOfMonth, groupDueItems, isHandled, likelyMatches,
   olderGroupHeading, skippedPeriod, validateRecurringForm,
   describeSchedule, groupDueItems as groupItemsByMonth, likelyMatches as findLikelyMatches, monthlyPotAmount,
-  nextOccurrences, occurrenceLabel, previousOccurrenceKey,
+  nextOccurrences, occurrenceLabel, previousOccurrenceKey, restorablePeriod,
 } from '../recurring';
 import type { Category, Recurring, Transaction } from '../types';
 
@@ -572,5 +572,27 @@ describe('validateRecurringForm schedules', () => {
     expect(validateRecurringForm({ ...extra, leadDays: max }).ok).toBe(true);
     const over = validateRecurringForm({ ...extra, leadDays: max + 1 });
     expect(over.ok === false && over.errors.leadDays).toBe(`Enter 0 to ${max} days`);
+  });
+});
+
+describe('restorablePeriod', () => {
+  it.each([
+    ['a month for a monthly item', { handledPeriod: '2026-08' }, '2026-08'],
+    ['a month for an item with no frequency', { frequency: undefined, handledPeriod: '2026-08' }, '2026-08'],
+    ['a date for a weekly item', { frequency: 'WEEKLY' as const, handledPeriod: '2026-09-14' }, '2026-09-14'],
+    ['a date for a yearly item', { frequency: 'YEARLY' as const, handledPeriod: '2025-09-14' }, '2025-09-14'],
+  ])('keeps %s', (_label, over, expected) => {
+    expect(restorablePeriod(rec(over))).toBe(expected);
+  });
+
+  it.each([
+    ['a date on a monthly item', { handledPeriod: '2026-09-14' }],
+    ['a month on a weekly item', { frequency: 'WEEKLY' as const, handledPeriod: '2026-10' }],
+    ['a month on a yearly item', { frequency: 'YEARLY' as const, handledPeriod: '2026-10' }],
+    ['an impossible date on a weekly item', { frequency: 'WEEKLY' as const, handledPeriod: '2026-02-31' }],
+    ['a month that does not exist', { handledPeriod: '2026-13' }],
+    ['no marker', { handledPeriod: null }],
+  ])('sends nothing for %s', (_label, over) => {
+    expect(restorablePeriod(rec(over))).toBeNull();
   });
 });

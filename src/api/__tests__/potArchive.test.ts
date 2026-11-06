@@ -136,9 +136,14 @@ describe('archivePot', () => {
     expect(await storedPot('cat-mortgage')).toBeUndefined();
   });
 
-  it('rejects a category that does not exist', async () => {
+  it('returns 404 for a category that does not exist', async () => {
         const res = await archivePot(event({ month: '2026-10' }), 'user-1', { categoryId: 'nope' });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 404 for an unknown pot even when the body is invalid', async () => {
+    const res = await archivePot(event({}), 'user-1', { categoryId: 'nope' });
+    expect(res.statusCode).toBe(404);
   });
 
   it('accepts the month before and the month after now, but nothing further away', async () => {
@@ -165,6 +170,7 @@ describe('archivePot', () => {
   });
 
   it('rejects an invalid JSON body', async () => {
+    await seed({ customCategories: [gardenPot] });
     const bad = { body: '{nope', requestContext: { http: { method: 'POST' } } } as unknown as APIGatewayProxyEventV2;
     const res = await archivePot(bad, 'user-1', { categoryId: 'cat-garden' });
     expect(res.statusCode).toBe(400);
@@ -269,5 +275,10 @@ describe('unarchivePot', () => {
   it('rejects a category that is not a pot', async () => {
         const res = await unarchivePot(event({}), 'user-1', { categoryId: 'cat-mortgage' });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 404 for a category that does not exist', async () => {
+    const res = await unarchivePot(event({}), 'user-1', { categoryId: 'nope' });
+    expect(res.statusCode).toBe(404);
   });
 });

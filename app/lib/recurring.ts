@@ -146,6 +146,19 @@ export function previousOccurrenceKey(recurring: Recurring, key: string): string
   return earlier[earlier.length - 1] ?? null;
 }
 
+// The API only accepts a handled marker in the format of the item's schedule: a month for monthly, a real date otherwise.
+function matchesFrequencyFormat(recurring: Pick<Recurring, 'frequency'>, key: string): boolean {
+  return isDated(recurring) ? isRealDate(key) : PERIOD_PATTERN.test(key);
+}
+
+// The marker to send back when undoing a skip or an add. A row whose frequency changed before the API started clearing
+// the marker can still hold the old format, which the API would answer with a 400, so it is reset to null instead.
+export function restorablePeriod(recurring: Recurring): string | null {
+  const { handledPeriod } = recurring;
+  if (handledPeriod === null) return null;
+  return matchesFrequencyFormat(recurring, handledPeriod) ? handledPeriod : null;
+}
+
 function pad(value: number): string {
   return String(value).padStart(2, '0');
 }
